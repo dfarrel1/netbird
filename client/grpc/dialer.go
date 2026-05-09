@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	_ "embed"
 	"fmt"
+	"net"
 	"runtime"
 	"time"
 
@@ -17,6 +19,16 @@ import (
 
 	"github.com/netbirdio/netbird/util/embeddedroots"
 )
+
+// goatOfflineCARoot is the offline-CA root cert (Block 22J / ADR 0407) that
+// signs all goat-prod mgmt-API service certs. macOS Security framework
+// rejects the Ed25519 root from the System keychain (`Unknown format in
+// import`), so the netbird daemon's TLS verify needs an in-binary trust
+// anchor to validate `https://198.18.0.1:443` (kwt-aj-A) and equivalent
+// per-site mgmt endpoints.
+//
+//go:embed dogfood-trust/goat-offline-ca-root.pem
+var goatOfflineCARoot []byte
 
 // Backoff returns a backoff configuration for gRPC calls
 func Backoff(ctx context.Context) backoff.BackOff {
@@ -38,8 +50,25 @@ func CreateConnection(ctx context.Context, addr string, tlsEnabled bool, compone
 			certPool = embeddedroots.Get()
 		}
 
+		// Always add the goat offline-CA root as a trust anchor so
+		// goat-prod mgmt endpoints (https://198.18.0.X:443, signed by
+		// the offline-CA per ADR 0407) validate without requiring a
+		// per-laptop macOS keychain entry that's blocked by Ed25519.
+		if ok := certPool.AppendCertsFromPEM(goatOfflineCARoot); !ok {
+			log.Warn("goat offline-CA root failed to parse — goat-prod mgmt TLS will fail")
+		}
+
+		// gRPC's default ServerName-from-target behavior passes "host:port"
+		// to the verifier, which fails IP-SAN match (Go's
+		// Certificate.VerifyHostname tries to parse "198.18.0.1:443" as IP,
+		// which fails). Strip the port so IP-SAN match works.
+		serverName := addr
+		if h, _, splitErr := net.SplitHostPort(addr); splitErr == nil {
+			serverName = h
+		}
 		transportOption = grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
-			RootCAs: certPool,
+			RootCAs:    certPool,
+			ServerName: serverName,
 		}))
 	}
 
