@@ -3,6 +3,7 @@ package types
 import (
 	"crypto/sha256"
 	b64 "encoding/base64"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -56,6 +57,11 @@ type SetupKey struct {
 	Ephemeral bool
 	// AllowExtraDNSLabels indicates if the key allows extra DNS labels
 	AllowExtraDNSLabels bool
+	// AutoPeerNameTemplate, when non-empty, is rendered at peer-registration time
+	// and used as the peer's Name instead of the device-reported hostname.
+	// Supported substitutions: {hostname}, {used_times}, {date}. An empty template
+	// preserves the historical behavior (Name = peer.Meta.Hostname).
+	AutoPeerNameTemplate string
 }
 
 // Copy copies SetupKey to a new object
@@ -79,9 +85,10 @@ func (key *SetupKey) Copy() *SetupKey {
 		UsedTimes:           key.UsedTimes,
 		LastUsed:            key.LastUsed,
 		AutoGroups:          autoGroups,
-		UsageLimit:          key.UsageLimit,
-		Ephemeral:           key.Ephemeral,
-		AllowExtraDNSLabels: key.AllowExtraDNSLabels,
+		UsageLimit:           key.UsageLimit,
+		Ephemeral:            key.Ephemeral,
+		AllowExtraDNSLabels:  key.AllowExtraDNSLabels,
+		AutoPeerNameTemplate: key.AutoPeerNameTemplate,
 	}
 }
 
@@ -151,9 +158,11 @@ func (key *SetupKey) IsOverUsed() bool {
 	return limit > 0 && key.UsedTimes >= limit
 }
 
-// GenerateSetupKey generates a new setup key
+// GenerateSetupKey generates a new setup key.
+// autoPeerNameTemplate is optional; an empty string preserves the historical
+// behavior of naming peers from their device-reported hostname.
 func GenerateSetupKey(name string, t SetupKeyType, validFor time.Duration, autoGroups []string,
-	usageLimit int, ephemeral bool, allowExtraDNSLabels bool) (*SetupKey, string) {
+	usageLimit int, ephemeral bool, allowExtraDNSLabels bool, autoPeerNameTemplate string) (*SetupKey, string) {
 	key := strings.ToUpper(uuid.New().String())
 	limit := usageLimit
 	if t == SetupKeyOneOff {
@@ -180,14 +189,32 @@ func GenerateSetupKey(name string, t SetupKeyType, validFor time.Duration, autoG
 		Revoked:             false,
 		UsedTimes:           0,
 		AutoGroups:          autoGroups,
-		UsageLimit:          limit,
-		Ephemeral:           ephemeral,
-		AllowExtraDNSLabels: allowExtraDNSLabels,
+		UsageLimit:           limit,
+		Ephemeral:            ephemeral,
+		AllowExtraDNSLabels:  allowExtraDNSLabels,
+		AutoPeerNameTemplate: autoPeerNameTemplate,
 	}, key
+}
+
+// RenderPeerName applies AutoPeerNameTemplate substitutions and returns the
+// resulting peer name. Substitutions: {hostname} → device-reported hostname,
+// {used_times} → 1-based registration ordinal (UsedTimes+1), {date} → YYYY-MM-DD.
+// Returns the empty string when the template is empty, signaling callers to
+// fall back to the historical hostname-based naming.
+func (key *SetupKey) RenderPeerName(hostname string) string {
+	if key.AutoPeerNameTemplate == "" {
+		return ""
+	}
+	r := strings.NewReplacer(
+		"{hostname}", hostname,
+		"{used_times}", strconv.Itoa(key.UsedTimes+1),
+		"{date}", time.Now().UTC().Format("2006-01-02"),
+	)
+	return r.Replace(key.AutoPeerNameTemplate)
 }
 
 // GenerateDefaultSetupKey generates a default reusable setup key with an unlimited usage and 30 days expiration
 func GenerateDefaultSetupKey() (*SetupKey, string) {
 	return GenerateSetupKey(DefaultSetupKeyName, SetupKeyReusable, DefaultSetupKeyDuration, []string{},
-		SetupKeyUnlimitedUsage, false, false)
+		SetupKeyUnlimitedUsage, false, false, "")
 }

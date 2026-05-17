@@ -50,7 +50,7 @@ func TestDefaultAccountManager_SaveSetupKey(t *testing.T) {
 	keyName := "my-test-key"
 
 	key, err := manager.CreateSetupKey(context.Background(), account.Id, keyName, types.SetupKeyReusable, expiresIn, []string{},
-		types.SetupKeyUnlimitedUsage, userID, false, false)
+		types.SetupKeyUnlimitedUsage, userID, false, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +168,7 @@ func TestDefaultAccountManager_CreateSetupKey(t *testing.T) {
 	for _, tCase := range []testCase{testCase1, testCase2, testCase3} {
 		t.Run(tCase.name, func(t *testing.T) {
 			key, err := manager.CreateSetupKey(context.Background(), account.Id, tCase.expectedKeyName, types.SetupKeyReusable, expiresIn,
-				tCase.expectedGroups, types.SetupKeyUnlimitedUsage, userID, false, false)
+				tCase.expectedGroups, types.SetupKeyUnlimitedUsage, userID, false, false, "")
 
 			if tCase.expectedFailure {
 				if err == nil {
@@ -210,7 +210,7 @@ func TestGetSetupKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	plainKey, err := manager.CreateSetupKey(context.Background(), account.Id, "key1", types.SetupKeyReusable, time.Hour, nil, types.SetupKeyUnlimitedUsage, userID, false, false)
+	plainKey, err := manager.CreateSetupKey(context.Background(), account.Id, "key1", types.SetupKeyReusable, time.Hour, nil, types.SetupKeyUnlimitedUsage, userID, false, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,7 +275,7 @@ func TestGenerateSetupKey(t *testing.T) {
 	expectedUpdatedAt := time.Now().UTC()
 	var expectedAutoGroups []string
 
-	key, _ := types.GenerateSetupKey(expectedName, types.SetupKeyOneOff, time.Hour, []string{}, types.SetupKeyUnlimitedUsage, false, false)
+	key, _ := types.GenerateSetupKey(expectedName, types.SetupKeyOneOff, time.Hour, []string{}, types.SetupKeyUnlimitedUsage, false, false, "")
 
 	assertKey(t, key, expectedName, expectedRevoke, expectedType, expectedUsedTimes, expectedCreatedAt,
 		expectedExpiresAt, key.Id, expectedUpdatedAt, expectedAutoGroups, true)
@@ -283,33 +283,33 @@ func TestGenerateSetupKey(t *testing.T) {
 }
 
 func TestSetupKey_IsValid(t *testing.T) {
-	validKey, _ := types.GenerateSetupKey("valid key", types.SetupKeyOneOff, time.Hour, []string{}, types.SetupKeyUnlimitedUsage, false, false)
+	validKey, _ := types.GenerateSetupKey("valid key", types.SetupKeyOneOff, time.Hour, []string{}, types.SetupKeyUnlimitedUsage, false, false, "")
 	if !validKey.IsValid() {
 		t.Errorf("expected key to be valid, got invalid %v", validKey)
 	}
 
 	// expired
-	expiredKey, _ := types.GenerateSetupKey("invalid key", types.SetupKeyOneOff, -time.Hour, []string{}, types.SetupKeyUnlimitedUsage, false, false)
+	expiredKey, _ := types.GenerateSetupKey("invalid key", types.SetupKeyOneOff, -time.Hour, []string{}, types.SetupKeyUnlimitedUsage, false, false, "")
 	if expiredKey.IsValid() {
 		t.Errorf("expected key to be invalid due to expiration, got valid %v", expiredKey)
 	}
 
 	// revoked
-	revokedKey, _ := types.GenerateSetupKey("invalid key", types.SetupKeyOneOff, time.Hour, []string{}, types.SetupKeyUnlimitedUsage, false, false)
+	revokedKey, _ := types.GenerateSetupKey("invalid key", types.SetupKeyOneOff, time.Hour, []string{}, types.SetupKeyUnlimitedUsage, false, false, "")
 	revokedKey.Revoked = true
 	if revokedKey.IsValid() {
 		t.Errorf("expected revoked key to be invalid, got valid %v", revokedKey)
 	}
 
 	// overused
-	overUsedKey, _ := types.GenerateSetupKey("invalid key", types.SetupKeyOneOff, time.Hour, []string{}, types.SetupKeyUnlimitedUsage, false, false)
+	overUsedKey, _ := types.GenerateSetupKey("invalid key", types.SetupKeyOneOff, time.Hour, []string{}, types.SetupKeyUnlimitedUsage, false, false, "")
 	overUsedKey.UsedTimes = 1
 	if overUsedKey.IsValid() {
 		t.Errorf("expected overused key to be invalid, got valid %v", overUsedKey)
 	}
 
 	// overused
-	reusableKey, _ := types.GenerateSetupKey("valid key", types.SetupKeyReusable, time.Hour, []string{}, types.SetupKeyUnlimitedUsage, false, false)
+	reusableKey, _ := types.GenerateSetupKey("valid key", types.SetupKeyReusable, time.Hour, []string{}, types.SetupKeyUnlimitedUsage, false, false, "")
 	reusableKey.UsedTimes = 99
 	if !reusableKey.IsValid() {
 		t.Errorf("expected reusable key to be valid when used many times, got valid %v", reusableKey)
@@ -388,7 +388,7 @@ func isValidBase64SHA256(encodedKey string) bool {
 
 func TestSetupKey_Copy(t *testing.T) {
 
-	key, _ := types.GenerateSetupKey("key name", types.SetupKeyOneOff, time.Hour, []string{}, types.SetupKeyUnlimitedUsage, false, false)
+	key, _ := types.GenerateSetupKey("key name", types.SetupKeyOneOff, time.Hour, []string{}, types.SetupKeyUnlimitedUsage, false, false, "")
 	keyCopy := key.Copy()
 
 	assertKey(t, keyCopy, key.Name, key.Revoked, string(key.Type), key.UsedTimes, key.CreatedAt, key.GetExpiresAt(), key.Id,
@@ -436,7 +436,7 @@ func TestSetupKeyAccountPeersUpdate(t *testing.T) {
 			close(done)
 		}()
 
-		setupKey, err = manager.CreateSetupKey(context.Background(), account.Id, "key1", types.SetupKeyReusable, time.Hour, nil, 999, userID, false, false)
+		setupKey, err = manager.CreateSetupKey(context.Background(), account.Id, "key1", types.SetupKeyReusable, time.Hour, nil, 999, userID, false, false, "")
 		assert.NoError(t, err)
 
 		select {
@@ -477,7 +477,7 @@ func TestDefaultAccountManager_CreateSetupKey_ShouldNotAllowToUpdateRevokedKey(t
 		t.Fatal(err)
 	}
 
-	key, err := manager.CreateSetupKey(context.Background(), account.Id, "testName", types.SetupKeyReusable, time.Hour, nil, types.SetupKeyUnlimitedUsage, userID, false, false)
+	key, err := manager.CreateSetupKey(context.Background(), account.Id, "testName", types.SetupKeyReusable, time.Hour, nil, types.SetupKeyUnlimitedUsage, userID, false, false, "")
 	assert.NoError(t, err)
 
 	// revoke the key
@@ -491,4 +491,53 @@ func TestDefaultAccountManager_CreateSetupKey_ShouldNotAllowToUpdateRevokedKey(t
 	_, err = manager.SaveSetupKey(context.Background(), account.Id, updateKey, userID)
 	assert.Error(t, err, "should not allow to update revoked key")
 
+}
+
+func TestSetupKey_RenderPeerName(t *testing.T) {
+	t.Run("empty template returns empty", func(t *testing.T) {
+		sk, _ := types.GenerateSetupKey("k", types.SetupKeyOneOff, time.Hour, nil, 0, false, false, "")
+		assert.Equal(t, "", sk.RenderPeerName("iPad"))
+	})
+
+	t.Run("literal template", func(t *testing.T) {
+		sk, _ := types.GenerateSetupKey("k", types.SetupKeyOneOff, time.Hour, nil, 0, false, false, "ipad-vendor-foo")
+		assert.Equal(t, "ipad-vendor-foo", sk.RenderPeerName("iPad"))
+	})
+
+	t.Run("hostname substitution", func(t *testing.T) {
+		sk, _ := types.GenerateSetupKey("k", types.SetupKeyOneOff, time.Hour, nil, 0, false, false, "vendor-foo-{hostname}")
+		assert.Equal(t, "vendor-foo-iPad", sk.RenderPeerName("iPad"))
+	})
+
+	t.Run("used_times substitution is 1-based registration ordinal", func(t *testing.T) {
+		sk, _ := types.GenerateSetupKey("k", types.SetupKeyReusable, time.Hour, nil, 0, false, false, "peer-{used_times}")
+		// First registration: UsedTimes is 0 before increment, render is for THIS peer = 1
+		assert.Equal(t, "peer-1", sk.RenderPeerName("anything"))
+		sk.UsedTimes = 4
+		assert.Equal(t, "peer-5", sk.RenderPeerName("anything"))
+	})
+
+	t.Run("date substitution", func(t *testing.T) {
+		sk, _ := types.GenerateSetupKey("k", types.SetupKeyOneOff, time.Hour, nil, 0, false, false, "peer-{date}")
+		expected := "peer-" + time.Now().UTC().Format("2006-01-02")
+		assert.Equal(t, expected, sk.RenderPeerName("anything"))
+	})
+}
+
+func TestSetupKey_AutoPeerNameTemplate_RoundTrip(t *testing.T) {
+	manager, _, err := createManager(t)
+	require.NoError(t, err)
+
+	userID := "testingUser"
+	account, err := manager.GetOrCreateAccountByUser(context.Background(), auth.UserAuth{UserId: userID})
+	require.NoError(t, err)
+
+	const template = "vendor-acme-{hostname}"
+	key, err := manager.CreateSetupKey(context.Background(), account.Id, "templated", types.SetupKeyReusable, time.Hour, nil, types.SetupKeyUnlimitedUsage, userID, false, false, template)
+	require.NoError(t, err)
+	assert.Equal(t, template, key.AutoPeerNameTemplate)
+
+	got, err := manager.GetSetupKey(context.Background(), account.Id, userID, key.Id)
+	require.NoError(t, err)
+	assert.Equal(t, template, got.AutoPeerNameTemplate, "template should survive a round-trip through the store")
 }

@@ -562,12 +562,13 @@ func (am *DefaultAccountManager) GetPeerNetwork(ctx context.Context, peerID stri
 }
 
 type peerAddAuthConfig struct {
-	AccountID           string
-	SetupKeyID          string
-	SetupKeyName        string
-	GroupsToAdd         []string
-	AllowExtraDNSLabels bool
-	Ephemeral           bool
+	AccountID                string
+	SetupKeyID               string
+	SetupKeyName             string
+	SetupKeyAutoPeerName     string // already-rendered name; empty when no template
+	GroupsToAdd              []string
+	AllowExtraDNSLabels      bool
+	Ephemeral                bool
 }
 
 func (am *DefaultAccountManager) processPeerAddAuth(ctx context.Context, accountID, userID, encodedHashedKey string, peer *nbpeer.Peer, temporary, addedByUser, addedBySetupKey bool, opEvent *activity.Event) (*peerAddAuthConfig, error) {
@@ -648,6 +649,7 @@ func (am *DefaultAccountManager) handleSetupKeyAddedPeer(ctx context.Context, en
 	config.Ephemeral = sk.Ephemeral
 	config.SetupKeyID = sk.Id
 	config.SetupKeyName = sk.Name
+	config.SetupKeyAutoPeerName = sk.RenderPeerName(peer.Meta.Hostname)
 	config.AllowExtraDNSLabels = sk.AllowExtraDNSLabels
 	config.AccountID = sk.AccountID
 
@@ -705,6 +707,11 @@ func (am *DefaultAccountManager) AddPeer(ctx context.Context, accountID, setupKe
 		}
 	}
 
+	peerName := peer.Meta.Hostname
+	if peerAddConfig.SetupKeyAutoPeerName != "" {
+		peerName = peerAddConfig.SetupKeyAutoPeerName
+	}
+
 	if err := domain.ValidateDomainsList(peer.ExtraDNSLabels); err != nil {
 		return nil, nil, nil, status.Errorf(status.InvalidArgument, "invalid extra DNS labels: %v", err)
 	}
@@ -715,7 +722,7 @@ func (am *DefaultAccountManager) AddPeer(ctx context.Context, accountID, setupKe
 		AccountID:                   accountID,
 		Key:                         peer.Key,
 		Meta:                        peer.Meta,
-		Name:                        peer.Meta.Hostname,
+		Name:                        peerName,
 		UserID:                      userID,
 		Status:                      &nbpeer.PeerStatus{Connected: false, LastSeen: registrationTime},
 		SSHEnabled:                  false,

@@ -198,7 +198,7 @@ func testGetNetworkMapGeneral(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	setupKey, err := manager.CreateSetupKey(context.Background(), account.Id, "test-key", types.SetupKeyReusable, time.Hour, nil, 999, userId, false, false)
+	setupKey, err := manager.CreateSetupKey(context.Background(), account.Id, "test-key", types.SetupKeyReusable, time.Hour, nil, 999, userId, false, false, "")
 	if err != nil {
 		t.Fatal("error creating setup key")
 		return
@@ -447,7 +447,7 @@ func TestAccountManager_GetPeerNetwork(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	setupKey, err := manager.CreateSetupKey(context.Background(), account.Id, "test-key", types.SetupKeyReusable, time.Hour, nil, 999, userId, false, false)
+	setupKey, err := manager.CreateSetupKey(context.Background(), account.Id, "test-key", types.SetupKeyReusable, time.Hour, nil, 999, userId, false, false, "")
 	if err != nil {
 		t.Fatal("error creating setup key")
 		return
@@ -519,7 +519,7 @@ func TestDefaultAccountManager_GetPeer(t *testing.T) {
 	}
 
 	// two peers one added by a regular user and one with a setup key
-	setupKey, err := manager.CreateSetupKey(context.Background(), account.Id, "test-key", types.SetupKeyReusable, time.Hour, nil, 999, adminUser, false, false)
+	setupKey, err := manager.CreateSetupKey(context.Background(), account.Id, "test-key", types.SetupKeyReusable, time.Hour, nil, 999, adminUser, false, false, "")
 	if err != nil {
 		t.Fatal("error creating setup key")
 		return
@@ -2252,7 +2252,7 @@ func Test_AddPeer(t *testing.T) {
 		return
 	}
 
-	setupKey, err := manager.CreateSetupKey(context.Background(), accountID, "test-key", types.SetupKeyReusable, time.Hour, nil, 10000, userID, false, false)
+	setupKey, err := manager.CreateSetupKey(context.Background(), accountID, "test-key", types.SetupKeyReusable, time.Hour, nil, 10000, userID, false, false, "")
 	if err != nil {
 		t.Fatal("error creating setup key")
 		return
@@ -2588,7 +2588,7 @@ func TestHandleSetupKeyAddedPeer(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("valid setup key", func(t *testing.T) {
-		setupKey, err := manager.CreateSetupKey(context.Background(), account.Id, "test-key", types.SetupKeyReusable, time.Hour, []string{}, 0, adminUser.Id, false, false)
+		setupKey, err := manager.CreateSetupKey(context.Background(), account.Id, "test-key", types.SetupKeyReusable, time.Hour, []string{}, 0, adminUser.Id, false, false, "")
 		require.NoError(t, err)
 
 		upperKey := strings.ToUpper(setupKey.Key)
@@ -2624,7 +2624,7 @@ func TestHandleSetupKeyAddedPeer(t *testing.T) {
 	})
 
 	t.Run("expired setup key", func(t *testing.T) {
-		setupKey, err := manager.CreateSetupKey(context.Background(), account.Id, "expired-key", types.SetupKeyReusable, time.Millisecond, []string{}, 0, adminUser.Id, false, false)
+		setupKey, err := manager.CreateSetupKey(context.Background(), account.Id, "expired-key", types.SetupKeyReusable, time.Millisecond, []string{}, 0, adminUser.Id, false, false, "")
 		require.NoError(t, err)
 
 		// Wait for key to expire
@@ -2644,7 +2644,7 @@ func TestHandleSetupKeyAddedPeer(t *testing.T) {
 	})
 
 	t.Run("extra DNS labels not allowed", func(t *testing.T) {
-		setupKey, err := manager.CreateSetupKey(context.Background(), account.Id, "no-dns-key", types.SetupKeyReusable, time.Hour, []string{}, 0, adminUser.Id, false, false)
+		setupKey, err := manager.CreateSetupKey(context.Background(), account.Id, "no-dns-key", types.SetupKeyReusable, time.Hour, []string{}, 0, adminUser.Id, false, false, "")
 		require.NoError(t, err)
 
 		upperKey := strings.ToUpper(setupKey.Key)
@@ -2661,7 +2661,7 @@ func TestHandleSetupKeyAddedPeer(t *testing.T) {
 	})
 
 	t.Run("extra DNS labels allowed", func(t *testing.T) {
-		setupKey, err := manager.CreateSetupKey(context.Background(), account.Id, "dns-key", types.SetupKeyReusable, time.Hour, []string{}, 0, adminUser.Id, false, true)
+		setupKey, err := manager.CreateSetupKey(context.Background(), account.Id, "dns-key", types.SetupKeyReusable, time.Hour, []string{}, 0, adminUser.Id, false, true, "")
 		require.NoError(t, err)
 
 		upperKey := strings.ToUpper(setupKey.Key)
@@ -2675,6 +2675,40 @@ func TestHandleSetupKeyAddedPeer(t *testing.T) {
 		err = manager.handleSetupKeyAddedPeer(context.Background(), encodedHashedKey, peer, opEvent, config)
 		require.NoError(t, err)
 		assert.True(t, config.AllowExtraDNSLabels)
+	})
+
+	t.Run("auto peer name template renders into config", func(t *testing.T) {
+		setupKey, err := manager.CreateSetupKey(context.Background(), account.Id, "named-key", types.SetupKeyReusable, time.Hour, []string{}, 0, adminUser.Id, false, false, "vendor-acme-{hostname}")
+		require.NoError(t, err)
+
+		upperKey := strings.ToUpper(setupKey.Key)
+		hashedKey := sha256.Sum256([]byte(upperKey))
+		encodedHashedKey := b64.StdEncoding.EncodeToString(hashedKey[:])
+
+		opEvent := &activity.Event{}
+		config := &peerAddAuthConfig{}
+		peer := &nbpeer.Peer{ExtraDNSLabels: []string{}, Meta: nbpeer.PeerSystemMeta{Hostname: "iPad"}}
+
+		err = manager.handleSetupKeyAddedPeer(context.Background(), encodedHashedKey, peer, opEvent, config)
+		require.NoError(t, err)
+		assert.Equal(t, "vendor-acme-iPad", config.SetupKeyAutoPeerName)
+	})
+
+	t.Run("no template leaves auto peer name empty", func(t *testing.T) {
+		setupKey, err := manager.CreateSetupKey(context.Background(), account.Id, "unnamed-key", types.SetupKeyReusable, time.Hour, []string{}, 0, adminUser.Id, false, false, "")
+		require.NoError(t, err)
+
+		upperKey := strings.ToUpper(setupKey.Key)
+		hashedKey := sha256.Sum256([]byte(upperKey))
+		encodedHashedKey := b64.StdEncoding.EncodeToString(hashedKey[:])
+
+		opEvent := &activity.Event{}
+		config := &peerAddAuthConfig{}
+		peer := &nbpeer.Peer{ExtraDNSLabels: []string{}, Meta: nbpeer.PeerSystemMeta{Hostname: "iPad"}}
+
+		err = manager.handleSetupKeyAddedPeer(context.Background(), encodedHashedKey, peer, opEvent, config)
+		require.NoError(t, err)
+		assert.Equal(t, "", config.SetupKeyAutoPeerName, "no template means caller falls back to hostname")
 	})
 }
 
@@ -2710,7 +2744,7 @@ func TestProcessPeerAddAuth(t *testing.T) {
 	})
 
 	t.Run("setup key authentication flow", func(t *testing.T) {
-		setupKey, err := manager.CreateSetupKey(context.Background(), account.Id, "auth-test-key", types.SetupKeyReusable, time.Hour, []string{}, 0, adminUser.Id, true, false)
+		setupKey, err := manager.CreateSetupKey(context.Background(), account.Id, "auth-test-key", types.SetupKeyReusable, time.Hour, []string{}, 0, adminUser.Id, true, false, "")
 		require.NoError(t, err)
 
 		upperKey := strings.ToUpper(setupKey.Key)

@@ -665,7 +665,7 @@ func Test_LoginPerformance(t *testing.T) {
 						return
 					}
 
-					setupKey, err := am.CreateSetupKey(context.Background(), account.Id, fmt.Sprintf("key-%d", j), types.SetupKeyReusable, time.Hour, nil, 0, fmt.Sprintf("user-%d", j), false, false)
+					setupKey, err := am.CreateSetupKey(context.Background(), account.Id, fmt.Sprintf("key-%d", j), types.SetupKeyReusable, time.Hour, nil, 0, fmt.Sprintf("user-%d", j), false, false, "")
 					if err != nil {
 						t.Logf("error creating setup key: %v", err)
 						return

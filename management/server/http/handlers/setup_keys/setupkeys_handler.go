@@ -85,8 +85,13 @@ func (h *handler) createSetupKey(w http.ResponseWriter, r *http.Request) {
 		allowExtraDNSLabels = *req.AllowExtraDnsLabels
 	}
 
+	var autoPeerNameTemplate string
+	if req.AutoPeerNameTemplate != nil {
+		autoPeerNameTemplate = *req.AutoPeerNameTemplate
+	}
+
 	setupKey, err := h.accountManager.CreateSetupKey(r.Context(), accountID, req.Name, types.SetupKeyType(req.Type), expiresIn,
-		req.AutoGroups, req.UsageLimit, userID, ephemeral, allowExtraDNSLabels)
+		req.AutoGroups, req.UsageLimit, userID, ephemeral, allowExtraDNSLabels, autoPeerNameTemplate)
 	if err != nil {
 		util.WriteError(r.Context(), err, w)
 		return
@@ -235,21 +240,28 @@ func ToResponseBody(key *types.SetupKey) *api.SetupKey {
 		state = "valid"
 	}
 
+	var autoPeerNameTemplate *string
+	if key.AutoPeerNameTemplate != "" {
+		t := key.AutoPeerNameTemplate
+		autoPeerNameTemplate = &t
+	}
+
 	return &api.SetupKey{
-		Id:                  key.Id,
-		Key:                 key.KeySecret,
-		Name:                key.Name,
-		Expires:             key.GetExpiresAt(),
-		Type:                string(key.Type),
-		Valid:               key.IsValid(),
-		Revoked:             key.Revoked,
-		UsedTimes:           key.UsedTimes,
-		LastUsed:            key.GetLastUsed(),
-		State:               state,
-		AutoGroups:          key.AutoGroups,
-		UpdatedAt:           key.UpdatedAt,
-		UsageLimit:          key.UsageLimit,
-		Ephemeral:           key.Ephemeral,
-		AllowExtraDnsLabels: key.AllowExtraDNSLabels,
+		Id:                   key.Id,
+		Key:                  key.KeySecret,
+		Name:                 key.Name,
+		Expires:              key.GetExpiresAt(),
+		Type:                 string(key.Type),
+		Valid:                key.IsValid(),
+		Revoked:              key.Revoked,
+		UsedTimes:            key.UsedTimes,
+		LastUsed:             key.GetLastUsed(),
+		State:                state,
+		AutoGroups:           key.AutoGroups,
+		UpdatedAt:            key.UpdatedAt,
+		UsageLimit:           key.UsageLimit,
+		Ephemeral:            key.Ephemeral,
+		AllowExtraDnsLabels:  key.AllowExtraDNSLabels,
+		AutoPeerNameTemplate: autoPeerNameTemplate,
 	}
 }
