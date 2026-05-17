@@ -1,0 +1,179 @@
+name: Sync upstream main
+
+# Weekly fast-forward sync from netbirdio/netbird main into fork main.
+#
+# This fork is "upstream + workflow files only" — load-bearing code deltas
+# live as patches in dlf-dds/DesertBreadBird (ops/netbird/patches/), not on
+# this branch. So a weekly fast-forward is the right shape: if upstream main
+# is a clean ancestor-superset of fork main, just open a PR with the new
+# upstream commits. If divergence is non-fast-forward (someone landed work
+# directly on fork main), open an issue instead of force-rewriting history.
+#
+# Conflict policy:
+#   - Fork main is allowed to carry ONLY workflow files added on top of
+#     upstream. Cherry-pick those on top of upstream/main into the sync
+#     branch.
+#   - If the cherry-pick conflicts, open an issue and stop.
+#
+# Skipped if dispatched on a non-default branch or on a non-fork (the
+# `if: github.repository == 'dfarrel1/netbird'` guard prevents the workflow
+# from firing if this file ever lands upstream).
+
+on:
+  schedule:
+    # Mondays at 14:00 UTC (~07:00 PT / 09:00 CT) — early-week so the operator
+    # has 4 weekdays to review/merge before the next cycle.
+    - cron: '0 14 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  sync:
+    if: github.repository == 'dfarrel1/netbird'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fork main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch upstream main
+        id: fetch
+        run: |
+          git remote add upstream https://github.com/netbirdio/netbird.git
+          git fetch upstream main --depth=0
+          UPSTREAM_HEAD=$(git rev-parse upstream/main)
+          FORK_HEAD=$(git rev-parse origin/main)
+          echo "upstream_head=${UPSTREAM_HEAD}" >> "$GITHUB_OUTPUT"
+          echo "fork_head=${FORK_HEAD}" >> "$GITHUB_OUTPUT"
+          if [ "${UPSTREAM_HEAD}" = "${FORK_HEAD}" ]; then
+            echo "no_drift=true" >> "$GITHUB_OUTPUT"
+            echo "Fork main is already at upstream HEAD; nothing to sync."
+          else
+            echo "no_drift=false" >> "$GITHUB_OUTPUT"
+            echo "Fork main: ${FORK_HEAD}"
+            echo "Upstream main: ${UPSTREAM_HEAD}"
+            BEHIND=$(git rev-list --count origin/main..upstream/main)
+            AHEAD=$(git rev-list --count upstream/main..origin/main)
+            echo "behind=${BEHIND}" >> "$GITHUB_OUTPUT"
+            echo "ahead=${AHEAD}" >> "$GITHUB_OUTPUT"
+            echo "Fork is ${BEHIND} commits behind, ${AHEAD} commits ahead of upstream."
+          fi
+
+      - name: Compute fork-only commits to replay
+        id: replay
+        if: steps.fetch.outputs.no_drift == 'false'
+        run: |
+          # Fork-only commits = commits on origin/main not in upstream/main.
+          # By design these should be limited to .github/workflows/ adds.
+          mkdir -p /tmp/fork-only
+          git log --reverse --format='%H' upstream/main..origin/main > /tmp/fork-only/shas.txt
+          echo "Fork-only commits:"
+          cat /tmp/fork-only/shas.txt
+          # Audit: every fork-only commit must touch only .github/ paths.
+          set +e
+          off_workflow_count=0
+          while read -r sha; do
+            paths=$(git diff-tree --no-commit-id --name-only -r "${sha}")
+            for p in $paths; do
+              case "$p" in
+                .github/*) ;;
+                *)
+                  echo "::warning::Fork-only commit ${sha} touches non-.github path: ${p}"
+                  off_workflow_count=$((off_workflow_count + 1))
+                  ;;
+              esac
+            done
+          done < /tmp/fork-only/shas.txt
+          set -e
+          echo "off_workflow_count=${off_workflow_count}" >> "$GITHUB_OUTPUT"
+
+      - name: Try cherry-pick onto upstream main
+        id: cherry
+        if: steps.fetch.outputs.no_drift == 'false'
+        run: |
+          BRANCH="sync-upstream-$(date -u +%Y-%m-%d)"
+          echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
+          git checkout -b "${BRANCH}" upstream/main
+          if [ ! -s /tmp/fork-only/shas.txt ]; then
+            echo "No fork-only commits to replay (clean fast-forward)."
+            echo "clean=true" >> "$GITHUB_OUTPUT"
+          else
+            set +e
+            git cherry-pick $(cat /tmp/fork-only/shas.txt | tr '\n' ' ')
+            cp_rc=$?
+            set -e
+            if [ "${cp_rc}" -ne 0 ]; then
+              echo "::error::Cherry-pick conflict; manual resolution required."
+              echo "clean=false" >> "$GITHUB_OUTPUT"
+              git cherry-pick --abort || true
+            else
+              echo "clean=true" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      - name: Push sync branch + open PR
+        if: steps.fetch.outputs.no_drift == 'false' && steps.cherry.outputs.clean == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="${{ steps.cherry.outputs.branch }}"
+          git push origin "${BRANCH}"
+          gh pr create \
+            --base main \
+            --head "${BRANCH}" \
+            --title "ci(sync): upstream main → fork main (${{ steps.fetch.outputs.behind }} commits)" \
+            --body "$(cat <<EOF
+          Automated weekly sync from \`netbirdio/netbird\` main.
+
+          - **Upstream HEAD:** \`${{ steps.fetch.outputs.upstream_head }}\`
+          - **Previous fork HEAD:** \`${{ steps.fetch.outputs.fork_head }}\`
+          - **Behind upstream by:** ${{ steps.fetch.outputs.behind }} commits
+          - **Fork-only commits replayed:** \`$(wc -l < /tmp/fork-only/shas.txt | tr -d ' ')\` (\`.github/\` paths only — see workflow log for audit)
+
+          Per the fork architecture ([\`dlf-dds/DesertBreadBird\` \`ops/netbird/\`](https://github.com/dlf-dds/DesertBreadBird/tree/main/ops/netbird)), this repo is "upstream + workflow files only" — load-bearing code deltas live as patches in DesertBreadBird, not here. So this PR should be a clean cherry-pick of workflow files onto upstream/main.
+
+          Generated by [\`.github/workflows/sync-upstream.yml\`](.github/workflows/sync-upstream.yml).
+          EOF
+          )"
+
+      - name: Open issue on conflict
+        if: steps.fetch.outputs.no_drift == 'false' && steps.cherry.outputs.clean == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "ci(sync): cherry-pick conflict syncing $(date -u +%Y-%m-%d)" \
+            --body "$(cat <<EOF
+          The weekly upstream-sync workflow could not cleanly cherry-pick fork-only commits onto upstream/main.
+
+          - **Upstream HEAD:** \`${{ steps.fetch.outputs.upstream_head }}\`
+          - **Previous fork HEAD:** \`${{ steps.fetch.outputs.fork_head }}\`
+          - **Behind upstream:** ${{ steps.fetch.outputs.behind }} commits
+          - **Ahead of upstream:** ${{ steps.fetch.outputs.ahead }} commits
+          - **Off-workflow-path warnings:** ${{ steps.replay.outputs.off_workflow_count }} (forks should only carry \`.github/\` files; non-workflow drift = a PR landed on fork main that shouldn't have)
+
+          ## Recovery
+
+          \`\`\`
+          git fetch upstream main
+          git checkout -b sync-upstream-\$(date -u +%Y-%m-%d) upstream/main
+          git cherry-pick \$(git log --reverse --format=%H upstream/main..origin/main)
+          # resolve conflicts
+          git push origin HEAD
+          gh pr create --base main --head sync-upstream-\$(date -u +%Y-%m-%d) --title "ci(sync): manual conflict resolution"
+          \`\`\`
+
+          Generated by [\`.github/workflows/sync-upstream.yml\`](.github/workflows/sync-upstream.yml).
+          EOF
+          )"
