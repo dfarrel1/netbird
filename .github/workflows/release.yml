@@ -114,6 +114,9 @@ jobs:
           retention-days: 30
 
   release:
+    # Skip on forks: the release pipeline needs Docker Hub, GHCR, GPG, Homebrew,
+    # and package-repo secrets that only the upstream netbirdio org has.
+    if: github.repository == 'netbirdio/netbird'
     runs-on: ubuntu-latest-m
     env:
       flags: ""
@@ -269,6 +272,8 @@ jobs:
           retention-days: 7
 
   release_ui:
+    # Skip on forks: same reason as the `release` job above.
+    if: github.repository == 'netbirdio/netbird'
     runs-on: ubuntu-latest
     steps:
       - name: Parse semver string
@@ -367,6 +372,8 @@ jobs:
           retention-days: 3
 
   release_ui_darwin:
+    # Skip on forks: same reason as the `release` job above.
+    if: github.repository == 'netbirdio/netbird'
     runs-on: macos-latest
     steps:
       - if: ${{ !startsWith(github.ref, 'refs/tags/v') }}

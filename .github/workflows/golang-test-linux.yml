@@ -377,6 +377,12 @@ jobs:
         arch: [ 'amd64' ]
         store: [ 'sqlite', 'postgres', 'mysql' ]
     runs-on: ubuntu-22.04
+    # Surface DOCKER_USER at job-env so step-level `if: env.X != ''` works.
+    # Lets the workflow run on forks that lack Docker Hub secrets (it will
+    # pull images anonymously and may hit rate limits, but it won't hard-fail
+    # at the login step).
+    env:
+      DOCKER_USER: ${{ secrets.DOCKER_USER }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -409,16 +415,15 @@ jobs:
         run: git --no-pager diff --exit-code
 
       - name: Login to Docker hub
-        if: github.event.pull_request && github.event.pull_request.head.repo && github.event.pull_request.head.repo.full_name == '' || github.repository == github.event.pull_request.head.repo.full_name || !github.head_ref
+        if: env.DOCKER_USER != ''
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USER }}
           password: ${{ secrets.DOCKER_TOKEN }}
 
       - name: docker login for root user
-        if: github.event.pull_request && github.event.pull_request.head.repo && github.event.pull_request.head.repo.full_name == '' || github.repository == github.event.pull_request.head.repo.full_name || !github.head_ref
+        if: env.DOCKER_USER != ''
         env:
-          DOCKER_USER: ${{ secrets.DOCKER_USER }}
           DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
         run: echo "$DOCKER_TOKEN" | sudo docker login --username "$DOCKER_USER" --password-stdin
 
@@ -437,8 +442,13 @@ jobs:
 
   benchmark:
     name: "Management / Benchmark"
+    # Skip on forks: this job pushes benchmark metrics to a Grafana Cloud
+    # instance using upstream-only secrets (GRAFANA_URL/USER/API_KEY). The
+    # actual `go test -bench` work is useful, but without the metric sink the
+    # job has nothing to publish to and fails on prometheus remote_write
+    # config validation.
+    if: github.repository == 'netbirdio/netbird' && (needs.build-cache.outputs.management == 'true' || github.event_name != 'pull_request')
     needs: [ build-cache ]
-    if: ${{ needs.build-cache.outputs.management == 'true' || github.event_name != 'pull_request' }}
     strategy:
       fail-fast: false
       matrix:
@@ -529,8 +539,9 @@ jobs:
 
   api_benchmark:
     name: "Management / Benchmark (API)"
+    # Skip on forks: same Grafana-Cloud-secrets reason as `benchmark` above.
+    if: github.repository == 'netbirdio/netbird' && (needs.build-cache.outputs.management == 'true' || github.event_name != 'pull_request')
     needs: [ build-cache ]
-    if: ${{ needs.build-cache.outputs.management == 'true' || github.event_name != 'pull_request' }}
     strategy:
       fail-fast: false
       matrix:
