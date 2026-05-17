@@ -240,18 +240,18 @@ func (mr *MockManagerMockRecorder) CreateRoute(ctx, accountID, prefix, networkTy
 }
 
 // CreateSetupKey mocks base method.
-func (m *MockManager) CreateSetupKey(ctx context.Context, accountID, keyName string, keyType types.SetupKeyType, expiresIn time.Duration, autoGroups []string, usageLimit int, userID string, ephemeral, allowExtraDNSLabels bool, autoPeerNameTemplate string) (*types.SetupKey, error) {
+func (m *MockManager) CreateSetupKey(ctx context.Context, accountID, keyName string, keyType types.SetupKeyType, expiresIn time.Duration, autoGroups []string, usageLimit int, userID string, ephemeral, allowExtraDNSLabels bool, autoPeerName string) (*types.SetupKey, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateSetupKey", ctx, accountID, keyName, keyType, expiresIn, autoGroups, usageLimit, userID, ephemeral, allowExtraDNSLabels, autoPeerNameTemplate)
+	ret := m.ctrl.Call(m, "CreateSetupKey", ctx, accountID, keyName, keyType, expiresIn, autoGroups, usageLimit, userID, ephemeral, allowExtraDNSLabels, autoPeerName)
 	ret0, _ := ret[0].(*types.SetupKey)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CreateSetupKey indicates an expected call of CreateSetupKey.
-func (mr *MockManagerMockRecorder) CreateSetupKey(ctx, accountID, keyName, keyType, expiresIn, autoGroups, usageLimit, userID, ephemeral, allowExtraDNSLabels, autoPeerNameTemplate interface{}) *gomock.Call {
+func (mr *MockManagerMockRecorder) CreateSetupKey(ctx, accountID, keyName, keyType, expiresIn, autoGroups, usageLimit, userID, ephemeral, allowExtraDNSLabels, autoPeerName interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateSetupKey", reflect.TypeOf((*MockManager)(nil).CreateSetupKey), ctx, accountID, keyName, keyType, expiresIn, autoGroups, usageLimit, userID, ephemeral, allowExtraDNSLabels, autoPeerNameTemplate)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateSetupKey", reflect.TypeOf((*MockManager)(nil).CreateSetupKey), ctx, accountID, keyName, keyType, expiresIn, autoGroups, usageLimit, userID, ephemeral, allowExtraDNSLabels, autoPeerName)
 }
 
 // CreateUser mocks base method.

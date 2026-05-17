@@ -33,13 +33,13 @@ func initSetupKeysTestMetaData(defaultKey *types.SetupKey, newKey *types.SetupKe
 	return &handler{
 		accountManager: &mock_server.MockAccountManager{
 			CreateSetupKeyFunc: func(_ context.Context, _ string, keyName string, typ types.SetupKeyType, _ time.Duration, _ []string,
-				_ int, _ string, ephemeral bool, allowExtraDNSLabels bool, autoPeerNameTemplate string,
+				_ int, _ string, ephemeral bool, allowExtraDNSLabels bool, autoPeerName string,
 			) (*types.SetupKey, error) {
 				if keyName == newKey.Name || typ != newKey.Type {
 					nk := newKey.Copy()
 					nk.Ephemeral = ephemeral
 					nk.AllowExtraDNSLabels = allowExtraDNSLabels
-					nk.AutoPeerNameTemplate = autoPeerNameTemplate
+					nk.AutoPeerName = autoPeerName
 					return nk, nil
 				}
 				return nil, fmt.Errorf("failed creating setup key")

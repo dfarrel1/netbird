@@ -53,10 +53,10 @@ type SetupKeyUpdateOperation struct {
 
 // CreateSetupKey generates a new setup key with a given name, type, list of groups IDs to auto-assign to peers registered with this key,
 // and adds it to the specified account. A list of autoGroups IDs can be empty.
-// autoPeerNameTemplate is optional; when non-empty, peers enrolled with this key
-// are named by rendering the template instead of using their device-reported hostname.
+// autoPeerName is optional; when non-empty, peers enrolled with this key
+// are named "<autoPeerName>-<hostname>" instead of bare hostname.
 func (am *DefaultAccountManager) CreateSetupKey(ctx context.Context, accountID string, keyName string, keyType types.SetupKeyType,
-	expiresIn time.Duration, autoGroups []string, usageLimit int, userID string, ephemeral bool, allowExtraDNSLabels bool, autoPeerNameTemplate string) (*types.SetupKey, error) {
+	expiresIn time.Duration, autoGroups []string, usageLimit int, userID string, ephemeral bool, allowExtraDNSLabels bool, autoPeerName string) (*types.SetupKey, error) {
 
 	allowed, err := am.permissionsManager.ValidateUserPermissions(ctx, accountID, userID, modules.SetupKeys, operations.Create)
 	if err != nil {
@@ -75,7 +75,7 @@ func (am *DefaultAccountManager) CreateSetupKey(ctx context.Context, accountID s
 			return status.Errorf(status.InvalidArgument, "invalid auto groups: %v", err)
 		}
 
-		setupKey, plainKey = types.GenerateSetupKey(keyName, keyType, expiresIn, autoGroups, usageLimit, ephemeral, allowExtraDNSLabels, autoPeerNameTemplate)
+		setupKey, plainKey = types.GenerateSetupKey(keyName, keyType, expiresIn, autoGroups, usageLimit, ephemeral, allowExtraDNSLabels, autoPeerName)
 		setupKey.AccountID = accountID
 
 		events := am.prepareSetupKeyEvents(ctx, transaction, accountID, userID, autoGroups, nil, setupKey)

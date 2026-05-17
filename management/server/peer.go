@@ -562,13 +562,13 @@ func (am *DefaultAccountManager) GetPeerNetwork(ctx context.Context, peerID stri
 }
 
 type peerAddAuthConfig struct {
-	AccountID                string
-	SetupKeyID               string
-	SetupKeyName             string
-	SetupKeyAutoPeerName     string // already-rendered name; empty when no template
-	GroupsToAdd              []string
-	AllowExtraDNSLabels      bool
-	Ephemeral                bool
+	AccountID            string
+	SetupKeyID           string
+	SetupKeyName         string
+	SetupKeyAutoPeerName string // already-resolved peer Name ("<label>-<hostname>") when the key carries AutoPeerName; empty otherwise
+	GroupsToAdd          []string
+	AllowExtraDNSLabels  bool
+	Ephemeral            bool
 }
 
 func (am *DefaultAccountManager) processPeerAddAuth(ctx context.Context, accountID, userID, encodedHashedKey string, peer *nbpeer.Peer, temporary, addedByUser, addedBySetupKey bool, opEvent *activity.Event) (*peerAddAuthConfig, error) {
@@ -649,7 +649,9 @@ func (am *DefaultAccountManager) handleSetupKeyAddedPeer(ctx context.Context, en
 	config.Ephemeral = sk.Ephemeral
 	config.SetupKeyID = sk.Id
 	config.SetupKeyName = sk.Name
-	config.SetupKeyAutoPeerName = sk.RenderPeerName(peer.Meta.Hostname)
+	if sk.AutoPeerName != "" {
+		config.SetupKeyAutoPeerName = sk.ResolvePeerName(peer.Meta.Hostname)
+	}
 	config.AllowExtraDNSLabels = sk.AllowExtraDNSLabels
 	config.AccountID = sk.AccountID
 

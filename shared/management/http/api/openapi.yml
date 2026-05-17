@@ -1133,14 +1133,15 @@ components:
           description: Allow extra DNS labels to be added to the peer
           type: boolean
           example: true
-        auto_peer_name_template:
+        auto_peer_name:
           description: |
-            Optional name template applied at peer-registration time. When
-            non-empty, peers enrolled with this key are named by rendering this
-            template (substitutions: {hostname}, {used_times}, {date}) instead
-            of using their device-reported hostname.
+            Optional operator-assigned label. When non-empty, peers enrolled
+            with this key are named "<auto_peer_name>-<hostname>" at
+            registration so both the mint-intent label and the device-reported
+            hostname are preserved on the peer Name. Empty preserves the
+            historical behavior (Name = device-reported hostname).
           type: string
-          example: "ipad-vendor-foo"
+          example: "vendor-acme-tactical-team-A"
       required:
         - id
         - key
@@ -1230,14 +1231,15 @@ components:
           description: Allow extra DNS labels to be added to the peer
           type: boolean
           example: true
-        auto_peer_name_template:
+        auto_peer_name:
           description: |
-            Optional name template applied at peer-registration time. When
-            non-empty, peers enrolled with this key are named by rendering this
-            template (substitutions: {hostname}, {used_times}, {date}) instead
-            of using their device-reported hostname.
+            Optional operator-assigned label. When non-empty, peers enrolled
+            with this key are named "<auto_peer_name>-<hostname>" at
+            registration so both the mint-intent label and the device-reported
+            hostname are preserved on the peer Name. Empty preserves the
+            historical behavior (Name = device-reported hostname).
           type: string
-          example: "ipad-vendor-foo"
+          example: "vendor-acme-tactical-team-A"
       required:
         - name
         - type

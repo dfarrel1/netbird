@@ -2677,8 +2677,8 @@ func TestHandleSetupKeyAddedPeer(t *testing.T) {
 		assert.True(t, config.AllowExtraDNSLabels)
 	})
 
-	t.Run("auto peer name template renders into config", func(t *testing.T) {
-		setupKey, err := manager.CreateSetupKey(context.Background(), account.Id, "named-key", types.SetupKeyReusable, time.Hour, []string{}, 0, adminUser.Id, false, false, "vendor-acme-{hostname}")
+	t.Run("auto peer name combines label with hostname in config", func(t *testing.T) {
+		setupKey, err := manager.CreateSetupKey(context.Background(), account.Id, "named-key", types.SetupKeyReusable, time.Hour, []string{}, 0, adminUser.Id, false, false, "vendor-acme")
 		require.NoError(t, err)
 
 		upperKey := strings.ToUpper(setupKey.Key)
@@ -2691,10 +2691,10 @@ func TestHandleSetupKeyAddedPeer(t *testing.T) {
 
 		err = manager.handleSetupKeyAddedPeer(context.Background(), encodedHashedKey, peer, opEvent, config)
 		require.NoError(t, err)
-		assert.Equal(t, "vendor-acme-iPad", config.SetupKeyAutoPeerName)
+		assert.Equal(t, "vendor-acme-iPad", config.SetupKeyAutoPeerName, "both halves of the identity preserved on the peer Name")
 	})
 
-	t.Run("no template leaves auto peer name empty", func(t *testing.T) {
+	t.Run("no auto peer name leaves field empty", func(t *testing.T) {
 		setupKey, err := manager.CreateSetupKey(context.Background(), account.Id, "unnamed-key", types.SetupKeyReusable, time.Hour, []string{}, 0, adminUser.Id, false, false, "")
 		require.NoError(t, err)
 
@@ -2708,7 +2708,7 @@ func TestHandleSetupKeyAddedPeer(t *testing.T) {
 
 		err = manager.handleSetupKeyAddedPeer(context.Background(), encodedHashedKey, peer, opEvent, config)
 		require.NoError(t, err)
-		assert.Equal(t, "", config.SetupKeyAutoPeerName, "no template means caller falls back to hostname")
+		assert.Equal(t, "", config.SetupKeyAutoPeerName, "no label means caller falls back to bare hostname")
 	})
 }
 

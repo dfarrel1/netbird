@@ -1761,8 +1761,8 @@ type CreateSetupKeyRequest struct {
 	// AutoGroups List of group IDs to auto-assign to peers registered with this key
 	AutoGroups []string `json:"auto_groups"`
 
-	// AutoPeerNameTemplate Optional name template applied at peer-registration time. When non-empty, peers enrolled with this key are named by rendering this template (substitutions: {hostname}, {used_times}, {date}) instead of using their device-reported hostname.
-	AutoPeerNameTemplate *string `json:"auto_peer_name_template,omitempty"`
+	// AutoPeerName Optional operator-assigned label. When non-empty, peers enrolled with this key are named "<auto_peer_name>-<hostname>" at registration so both the mint-intent label and the device-reported hostname are preserved on the peer Name. Empty preserves the historical behavior (Name = device-reported hostname).
+	AutoPeerName *string `json:"auto_peer_name,omitempty"`
 
 	// Ephemeral Indicate that the peer will be ephemeral or not
 	Ephemeral *bool `json:"ephemeral,omitempty"`
@@ -4153,8 +4153,8 @@ type SetupKey struct {
 	// AutoGroups List of group IDs to auto-assign to peers registered with this key
 	AutoGroups []string `json:"auto_groups"`
 
-	// AutoPeerNameTemplate Optional name template applied at peer-registration time. When non-empty, peers enrolled with this key are named by rendering this template (substitutions: {hostname}, {used_times}, {date}) instead of using their device-reported hostname.
-	AutoPeerNameTemplate *string `json:"auto_peer_name_template,omitempty"`
+	// AutoPeerName Optional operator-assigned label. When non-empty, peers enrolled with this key are named "<auto_peer_name>-<hostname>" at registration so both the mint-intent label and the device-reported hostname are preserved on the peer Name. Empty preserves the historical behavior (Name = device-reported hostname).
+	AutoPeerName *string `json:"auto_peer_name,omitempty"`
 
 	// Ephemeral Indicate that the peer will be ephemeral or not
 	Ephemeral bool `json:"ephemeral"`
@@ -4204,8 +4204,8 @@ type SetupKeyBase struct {
 	// AutoGroups List of group IDs to auto-assign to peers registered with this key
 	AutoGroups []string `json:"auto_groups"`
 
-	// AutoPeerNameTemplate Optional name template applied at peer-registration time. When non-empty, peers enrolled with this key are named by rendering this template (substitutions: {hostname}, {used_times}, {date}) instead of using their device-reported hostname.
-	AutoPeerNameTemplate *string `json:"auto_peer_name_template,omitempty"`
+	// AutoPeerName Optional operator-assigned label. When non-empty, peers enrolled with this key are named "<auto_peer_name>-<hostname>" at registration so both the mint-intent label and the device-reported hostname are preserved on the peer Name. Empty preserves the historical behavior (Name = device-reported hostname).
+	AutoPeerName *string `json:"auto_peer_name,omitempty"`
 
 	// Ephemeral Indicate that the peer will be ephemeral or not
 	Ephemeral bool `json:"ephemeral"`
@@ -4252,8 +4252,8 @@ type SetupKeyClear struct {
 	// AutoGroups List of group IDs to auto-assign to peers registered with this key
 	AutoGroups []string `json:"auto_groups"`
 
-	// AutoPeerNameTemplate Optional name template applied at peer-registration time. When non-empty, peers enrolled with this key are named by rendering this template (substitutions: {hostname}, {used_times}, {date}) instead of using their device-reported hostname.
-	AutoPeerNameTemplate *string `json:"auto_peer_name_template,omitempty"`
+	// AutoPeerName Optional operator-assigned label. When non-empty, peers enrolled with this key are named "<auto_peer_name>-<hostname>" at registration so both the mint-intent label and the device-reported hostname are preserved on the peer Name. Empty preserves the historical behavior (Name = device-reported hostname).
+	AutoPeerName *string `json:"auto_peer_name,omitempty"`
 
 	// Ephemeral Indicate that the peer will be ephemeral or not
 	Ephemeral bool `json:"ephemeral"`

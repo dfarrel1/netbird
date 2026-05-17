@@ -493,38 +493,24 @@ func TestDefaultAccountManager_CreateSetupKey_ShouldNotAllowToUpdateRevokedKey(t
 
 }
 
-func TestSetupKey_RenderPeerName(t *testing.T) {
-	t.Run("empty template returns empty", func(t *testing.T) {
+func TestSetupKey_ResolvePeerName(t *testing.T) {
+	t.Run("empty AutoPeerName falls back to hostname", func(t *testing.T) {
 		sk, _ := types.GenerateSetupKey("k", types.SetupKeyOneOff, time.Hour, nil, 0, false, false, "")
-		assert.Equal(t, "", sk.RenderPeerName("iPad"))
+		assert.Equal(t, "iPad", sk.ResolvePeerName("iPad"))
 	})
 
-	t.Run("literal template", func(t *testing.T) {
-		sk, _ := types.GenerateSetupKey("k", types.SetupKeyOneOff, time.Hour, nil, 0, false, false, "ipad-vendor-foo")
-		assert.Equal(t, "ipad-vendor-foo", sk.RenderPeerName("iPad"))
+	t.Run("non-empty AutoPeerName is combined with hostname via hyphen", func(t *testing.T) {
+		sk, _ := types.GenerateSetupKey("k", types.SetupKeyOneOff, time.Hour, nil, 0, false, false, "vendor-acme")
+		assert.Equal(t, "vendor-acme-iPad", sk.ResolvePeerName("iPad"))
 	})
 
-	t.Run("hostname substitution", func(t *testing.T) {
-		sk, _ := types.GenerateSetupKey("k", types.SetupKeyOneOff, time.Hour, nil, 0, false, false, "vendor-foo-{hostname}")
-		assert.Equal(t, "vendor-foo-iPad", sk.RenderPeerName("iPad"))
-	})
-
-	t.Run("used_times substitution is 1-based registration ordinal", func(t *testing.T) {
-		sk, _ := types.GenerateSetupKey("k", types.SetupKeyReusable, time.Hour, nil, 0, false, false, "peer-{used_times}")
-		// First registration: UsedTimes is 0 before increment, render is for THIS peer = 1
-		assert.Equal(t, "peer-1", sk.RenderPeerName("anything"))
-		sk.UsedTimes = 4
-		assert.Equal(t, "peer-5", sk.RenderPeerName("anything"))
-	})
-
-	t.Run("date substitution", func(t *testing.T) {
-		sk, _ := types.GenerateSetupKey("k", types.SetupKeyOneOff, time.Hour, nil, 0, false, false, "peer-{date}")
-		expected := "peer-" + time.Now().UTC().Format("2006-01-02")
-		assert.Equal(t, expected, sk.RenderPeerName("anything"))
+	t.Run("preserves device-reported hostname casing", func(t *testing.T) {
+		sk, _ := types.GenerateSetupKey("k", types.SetupKeyOneOff, time.Hour, nil, 0, false, false, "tactical-team-A")
+		assert.Equal(t, "tactical-team-A-iPhone-5734", sk.ResolvePeerName("iPhone-5734"))
 	})
 }
 
-func TestSetupKey_AutoPeerNameTemplate_RoundTrip(t *testing.T) {
+func TestSetupKey_AutoPeerName_RoundTrip(t *testing.T) {
 	manager, _, err := createManager(t)
 	require.NoError(t, err)
 
@@ -532,12 +518,12 @@ func TestSetupKey_AutoPeerNameTemplate_RoundTrip(t *testing.T) {
 	account, err := manager.GetOrCreateAccountByUser(context.Background(), auth.UserAuth{UserId: userID})
 	require.NoError(t, err)
 
-	const template = "vendor-acme-{hostname}"
-	key, err := manager.CreateSetupKey(context.Background(), account.Id, "templated", types.SetupKeyReusable, time.Hour, nil, types.SetupKeyUnlimitedUsage, userID, false, false, template)
+	const label = "vendor-acme-tactical-team-A"
+	key, err := manager.CreateSetupKey(context.Background(), account.Id, "labeled", types.SetupKeyReusable, time.Hour, nil, types.SetupKeyUnlimitedUsage, userID, false, false, label)
 	require.NoError(t, err)
-	assert.Equal(t, template, key.AutoPeerNameTemplate)
+	assert.Equal(t, label, key.AutoPeerName)
 
 	got, err := manager.GetSetupKey(context.Background(), account.Id, userID, key.Id)
 	require.NoError(t, err)
-	assert.Equal(t, template, got.AutoPeerNameTemplate, "template should survive a round-trip through the store")
+	assert.Equal(t, label, got.AutoPeerName, "label should survive a round-trip through the store")
 }
