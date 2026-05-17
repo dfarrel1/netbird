@@ -51,7 +51,10 @@ jobs:
         id: fetch
         run: |
           git remote add upstream https://github.com/netbirdio/netbird.git
-          git fetch upstream main --depth=0
+          # Omit --depth: actions/checkout already did fetch-depth: 0 (full
+          # history), and `git fetch --depth=0` is invalid syntax (depth must
+          # be >= 1). Bare fetch gets all upstream/main refs.
+          git fetch upstream main
           UPSTREAM_HEAD=$(git rev-parse upstream/main)
           FORK_HEAD=$(git rev-parse origin/main)
           echo "upstream_head=${UPSTREAM_HEAD}" >> "$GITHUB_OUTPUT"
