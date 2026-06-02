@@ -11,6 +11,7 @@ import (
 	"github.com/netbirdio/netbird/shared/relay/messages"
 	//nolint:staticcheck
 	"github.com/netbirdio/netbird/shared/relay/messages/address"
+	authv2 "github.com/netbirdio/netbird/shared/relay/auth/hmac/v2"
 	//nolint:staticcheck
 	authmsg "github.com/netbirdio/netbird/shared/relay/messages/auth"
 )
@@ -154,7 +155,11 @@ func (h *handshake) handleAuthMsg(buf []byte) (*messages.PeerID, error) {
 		return nil, fmt.Errorf("unmarshal hello message: %w", err)
 	}
 
-	if err := h.validator.Validate(authPayload); err != nil {
+	// Pass the claimed peer_id alongside the token so the validator can
+	// verify peer-ID-bound tokens (goat ADR 1021). Unbound tokens ignore
+	// the peer_id, so this is backward-compatible.
+	creds := authv2.PeerBoundCredentials{PeerID: rawPeerID[:], Token: authPayload}
+	if err := h.validator.Validate(creds); err != nil {
 		return rawPeerID, fmt.Errorf("validate %s (%s): %w", rawPeerID.String(), h.conn.RemoteAddr(), err)
 	}
 

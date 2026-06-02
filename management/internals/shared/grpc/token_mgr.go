@@ -20,6 +20,7 @@ import (
 	"github.com/netbirdio/netbird/shared/management/proto"
 	auth "github.com/netbirdio/netbird/shared/relay/auth/hmac"
 	authv2 "github.com/netbirdio/netbird/shared/relay/auth/hmac/v2"
+	relaymsg "github.com/netbirdio/netbird/shared/relay/messages"
 )
 
 const defaultDuration = 12 * time.Hour
@@ -27,7 +28,11 @@ const defaultDuration = 12 * time.Hour
 // SecretsManager used to manage TURN and relay secrets
 type SecretsManager interface {
 	GenerateTurnToken() (*Token, error)
-	GenerateRelayToken() (*Token, error)
+	// GenerateRelayToken issues a relay auth token for the peer identified
+	// by peerKey (its WireGuard public key). When peer-ID-bound tokens are
+	// enabled (goat ADR 1021), the token binds to messages.HashID(peerKey);
+	// otherwise peerKey is ignored and an unbound token is issued.
+	GenerateRelayToken(peerKey string) (*Token, error)
 	SetupRefresh(ctx context.Context, accountID, peerKey string)
 	CancelRefresh(peerKey string)
 	GetWGKey() (wgtypes.Key, error)
@@ -48,7 +53,15 @@ type TimeBasedAuthSecretsManager struct {
 	wgKey           wgtypes.Key
 }
 
-type Token auth.Token
+// Token is a relay/TURN auth token in the form delivered to clients
+// (Payload + base64 Signature). AuthAlgo selects the relay token format
+// (goat ADR 1021): 0 for TURN (unused) and unbound relay tokens, 2 for
+// peer-ID-bound relay tokens.
+type Token struct {
+	Payload   string
+	Signature string
+	AuthAlgo  uint32
+}
 
 func NewTimeBasedAuthSecretsManager(updateManager network_map.PeersUpdateManager, turnCfg *nbconfig.TURNConfig, relayCfg *nbconfig.Relay, settingsManager settings.Manager, groupsManager groups.Manager) (*TimeBasedAuthSecretsManager, error) {
 	key, err := wgtypes.GeneratePrivateKey()
@@ -107,15 +120,29 @@ func (m *TimeBasedAuthSecretsManager) GenerateTurnToken() (*Token, error) {
 	if err != nil {
 		return nil, fmt.Errorf("generate TURN token: %s", err)
 	}
-	return (*Token)(turnToken), nil
+	return &Token{Payload: turnToken.Payload, Signature: turnToken.Signature}, nil
 }
 
-// GenerateRelayToken generates new time-based secret credentials for relay
-func (m *TimeBasedAuthSecretsManager) GenerateRelayToken() (*Token, error) {
+// GenerateRelayToken generates new time-based secret credentials for relay.
+// When relayCfg.PeerBoundTokens is set (goat ADR 1021) and peerKey is
+// non-empty, the token binds to the peer's relay identity
+// (messages.HashID(peerKey)) so it cannot be replayed as a different peer;
+// otherwise an unbound (legacy) token is issued. Either way the relay must
+// accept the chosen algorithm — roll PeerBoundTokens out only after every
+// relay tier dual-accepts peer-bound tokens.
+func (m *TimeBasedAuthSecretsManager) GenerateRelayToken(peerKey string) (*Token, error) {
 	if m.relayHmacToken == nil {
 		return nil, fmt.Errorf("relay configuration is not set")
 	}
-	relayToken, err := m.relayHmacToken.GenerateToken()
+
+	var relayToken *authv2.Token
+	var err error
+	if m.relayCfg != nil && m.relayCfg.PeerBoundTokens && peerKey != "" {
+		peerID := relaymsg.HashID(peerKey)
+		relayToken, err = m.relayHmacToken.GenerateTokenBound(peerID[:])
+	} else {
+		relayToken, err = m.relayHmacToken.GenerateToken()
+	}
 	if err != nil {
 		return nil, fmt.Errorf("generate relay token: %s", err)
 	}
@@ -123,6 +150,7 @@ func (m *TimeBasedAuthSecretsManager) GenerateRelayToken() (*Token, error) {
 	return &Token{
 		Payload:   string(relayToken.Payload),
 		Signature: base64.StdEncoding.EncodeToString(relayToken.Signature),
+		AuthAlgo:  uint32(relayToken.AuthAlgo),
 	}, nil
 }
 
@@ -229,12 +257,16 @@ func (m *TimeBasedAuthSecretsManager) pushNewTURNAndRelayTokens(ctx context.Cont
 
 	// workaround for the case when client is unable to handle turn and relay updates at different time
 	if m.relayCfg != nil {
-		token, err := m.GenerateRelayToken()
+		// peerID is the peer's WireGuard public key — the same string the
+		// client hashes into its relay peer_id — so a peer-bound token
+		// (ADR 1021) binds correctly on refresh too.
+		token, err := m.GenerateRelayToken(peerID)
 		if err == nil {
 			update.NetbirdConfig.Relay = &proto.RelayConfig{
 				Urls:           m.relayCfg.Addresses,
 				TokenPayload:   token.Payload,
 				TokenSignature: token.Signature,
+				TokenAuthAlgo:  token.AuthAlgo,
 			}
 		}
 	}

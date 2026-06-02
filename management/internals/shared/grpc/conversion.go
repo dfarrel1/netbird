@@ -71,6 +71,7 @@ func toNetbirdConfig(config *nbconfig.Config, turnCredentials *Token, relayToken
 		if relayToken != nil {
 			relayCfg.TokenPayload = relayToken.Payload
 			relayCfg.TokenSignature = relayToken.Signature
+			relayCfg.TokenAuthAlgo = relayToken.AuthAlgo
 		}
 	}
 

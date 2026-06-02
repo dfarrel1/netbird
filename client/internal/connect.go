@@ -445,6 +445,7 @@ func parseRelayInfo(loginResp *mgmProto.LoginResponse) ([]string, *hmac.Token) {
 	token := &hmac.Token{
 		Payload:   relayCfg.GetTokenPayload(),
 		Signature: relayCfg.GetTokenSignature(),
+		AuthAlgo:  relayCfg.GetTokenAuthAlgo(),
 	}
 
 	return relayCfg.GetUrls(), token

@@ -27,8 +27,19 @@ func (a *TokenStore) UpdateToken(token *Token) error {
 		return fmt.Errorf("decode signature: %w", err)
 	}
 
+	// Use the algorithm the server selected (goat ADR 1021). 0/unset means
+	// the server is older / issuing unbound tokens → default to
+	// AuthAlgoHMACSHA256 for backward compatibility. The client only
+	// replays the server-computed signature; for peer-bound tokens the
+	// binding is verified relay-side against the Auth frame's peer_id, so
+	// the client does no extra crypto — it just stamps the right algo byte.
+	algo := v2.AuthAlgo(token.AuthAlgo)
+	if algo == v2.AuthAlgoUnknown {
+		algo = v2.AuthAlgoHMACSHA256
+	}
+
 	tok := v2.Token{
-		AuthAlgo:  v2.AuthAlgoHMACSHA256,
+		AuthAlgo:  algo,
 		Signature: sig,
 		Payload:   []byte(token.Payload),
 	}

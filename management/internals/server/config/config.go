@@ -91,6 +91,12 @@ type Relay struct {
 	Addresses      []string
 	CredentialsTTL util.Duration
 	Secret         string
+	// PeerBoundTokens issues peer-ID-bound relay auth tokens (goat ADR
+	// 1021) instead of unbound ones, so a peer's token cannot be replayed
+	// to impersonate another peer at the relay. Default false (unbound,
+	// legacy). Enable ONLY after every relay tier dual-accepts peer-bound
+	// tokens, or peers are rejected.
+	PeerBoundTokens bool
 }
 
 // HttpServerConfig is a config of the HTTP Management service server
