@@ -333,7 +333,6 @@ func toProtocolFirewallRules(rules []*types.FirewallRule, includeIPv6, useSource
 	return result
 }
 
-
 // populateSourcePrefixes sets SourcePrefixes on fwRule and returns any
 // additional rules needed (e.g. a v6 wildcard clone when the peer IP is unspecified).
 func populateSourcePrefixes(fwRule *proto.FirewallRule, rule *types.FirewallRule, includeIPv6 bool) []*proto.FirewallRule {

@@ -12,6 +12,7 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 
 	"github.com/netbirdio/netbird/management/internals/controllers/network_map"
 	"github.com/netbirdio/netbird/management/internals/controllers/network_map/update_channel"
@@ -20,6 +21,8 @@ import (
 	"github.com/netbirdio/netbird/management/server/settings"
 	"github.com/netbirdio/netbird/management/server/types"
 	"github.com/netbirdio/netbird/shared/management/proto"
+	authv2 "github.com/netbirdio/netbird/shared/relay/auth/hmac/v2"
+	relaymsg "github.com/netbirdio/netbird/shared/relay/messages"
 	"github.com/netbirdio/netbird/util"
 )
 
@@ -66,7 +69,9 @@ func TestTimeBasedAuthSecretsManager_GenerateCredentials(t *testing.T) {
 
 	validateMAC(t, sha1.New, turnCredentials.Payload, turnCredentials.Signature, []byte(secret))
 
-	relayCredentials, err := tested.GenerateRelayToken()
+	// PeerBoundTokens defaults to false here, so peerKey is ignored and an
+	// unbound (legacy algo-1) token is issued; pass a representative key.
+	relayCredentials, err := tested.GenerateRelayToken("some_peer_key")
 	require.NoError(t, err)
 
 	if relayCredentials.Payload == "" {
@@ -78,6 +83,80 @@ func TestTimeBasedAuthSecretsManager_GenerateCredentials(t *testing.T) {
 
 	hashedSecret := sha256.Sum256([]byte(secret))
 	validateMAC(t, sha256.New, relayCredentials.Payload, relayCredentials.Signature, hashedSecret[:])
+}
+
+// TestTimeBasedAuthSecretsManager_PeerBoundTokenPreimageInvariant is the
+// ADR 1021 lockout guard. A peer-ID-bound relay token only authenticates if
+// the peer_id preimage management binds it to is byte-identical to the
+// peer_id the relay validator recomputes from the Auth frame. Management
+// binds to messages.HashID(peerKey); the client presents messages.HashID of
+// the same WireGuard public key string. If those two preimages ever diverge,
+// every peer-bound token is silently rejected and the whole fleet locks out
+// the moment Phase C refuses unbound tokens. This test pins the contract:
+// a management-issued algo-2 token must validate against
+// messages.HashID(peerKey) and must be rejected for any other peer_id.
+func TestTimeBasedAuthSecretsManager_PeerBoundTokenPreimageInvariant(t *testing.T) {
+	ttl := util.Duration{Duration: time.Hour}
+	secret := "some_secret"
+	peersManager := update_channel.NewPeersUpdateManager(nil)
+
+	rc := &config.Relay{
+		Addresses:       []string{"localhost:0"},
+		CredentialsTTL:  ttl,
+		Secret:          secret,
+		PeerBoundTokens: true,
+	}
+
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	settingsMockManager := settings.NewMockManager(ctrl)
+	groupsManager := groups.NewManagerMock()
+
+	tested, err := NewTimeBasedAuthSecretsManager(peersManager, &config.TURNConfig{
+		CredentialsTTL:       ttl,
+		Secret:               secret,
+		Turns:                []*config.Host{TurnTestHost},
+		TimeBasedCredentials: true,
+	}, rc, settingsMockManager, groupsManager)
+	require.NoError(t, err)
+
+	// peerKey is the peer's WireGuard public key string — the exact value the
+	// client hashes into its relay peer_id (myPrivateKey.PublicKey().String()).
+	privKey, err := wgtypes.GeneratePrivateKey()
+	require.NoError(t, err)
+	peerKey := privKey.PublicKey().String()
+
+	tok, err := tested.GenerateRelayToken(peerKey)
+	require.NoError(t, err)
+	require.Equal(t, uint32(authv2.AuthAlgoHMACSHA256PeerBound), tok.AuthAlgo,
+		"PeerBoundTokens=true must issue an algo-2 (peer-bound) token")
+
+	// Reconstruct the on-wire token exactly as the client's TokenStore does:
+	// base64-decode the signature, stamp the algo byte, marshal.
+	sig, err := base64.StdEncoding.DecodeString(tok.Signature)
+	require.NoError(t, err)
+	wire := (&authv2.Token{
+		AuthAlgo:  authv2.AuthAlgo(tok.AuthAlgo),
+		Signature: sig,
+		Payload:   []byte(tok.Payload),
+	}).Marshal()
+
+	// The relay validates with sha256(secret) and the claimed peer_id from
+	// the Auth frame. The preimage MUST be messages.HashID(peerKey).
+	hashedSecret := sha256.Sum256([]byte(secret))
+	v := authv2.NewValidator(hashedSecret[:])
+
+	peerID := relaymsg.HashID(peerKey)
+	require.NoError(t, v.Validate(authv2.PeerBoundCredentials{PeerID: peerID[:], Token: wire}),
+		"mgmt-issued peer-bound token must validate against messages.HashID(peerKey); a preimage mismatch would lock every peer out")
+
+	// The impersonation defense: a token bound to one peer must not validate
+	// when the Auth frame claims a different peer_id.
+	otherKey, err := wgtypes.GeneratePrivateKey()
+	require.NoError(t, err)
+	otherID := relaymsg.HashID(otherKey.PublicKey().String())
+	require.Error(t, v.Validate(authv2.PeerBoundCredentials{PeerID: otherID[:], Token: wire}),
+		"a token bound to one peer must be rejected when presented as another")
 }
 
 func TestTimeBasedAuthSecretsManager_SetupRefresh(t *testing.T) {

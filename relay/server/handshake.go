@@ -8,10 +8,10 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/netbirdio/netbird/relay/server/listener"
+	authv2 "github.com/netbirdio/netbird/shared/relay/auth/hmac/v2"
 	"github.com/netbirdio/netbird/shared/relay/messages"
 	//nolint:staticcheck
 	"github.com/netbirdio/netbird/shared/relay/messages/address"
-	authv2 "github.com/netbirdio/netbird/shared/relay/auth/hmac/v2"
 	//nolint:staticcheck
 	authmsg "github.com/netbirdio/netbird/shared/relay/messages/auth"
 )
