@@ -10,10 +10,16 @@ name: Sync upstream main
 # directly on fork main), open an issue instead of force-rewriting history.
 #
 # Conflict policy:
-#   - Fork main is allowed to carry ONLY workflow files added on top of
-#     upstream. Cherry-pick those on top of upstream/main into the sync
-#     branch.
-#   - If the cherry-pick conflicts, open an issue and stop.
+#   - Fork main is allowed to carry ONLY .github/ files (CI/workflow overrides)
+#     on top of upstream. Cherry-pick those on top of upstream/main into the
+#     sync branch.
+#   - If a fork workflow edit conflicts with an upstream edit to the same
+#     .github/ file, the fork's version wins (overriding upstream CI is why the
+#     edit exists) — the cherry-pick auto-resolves in the fork's favor.
+#   - If a conflict ever touches a NON-.github/ path, a code delta has leaked
+#     onto fork main (it belongs as a patch in DesertBreadBird ops/netbird/
+#     patches/). Auto-resolution refuses, and an issue is opened for manual
+#     resolution.
 #
 # Skipped if dispatched on a non-default branch or on a non-fork (the
 # `if: github.repository == 'dfarrel1/netbird'` guard prevents the workflow
@@ -80,7 +86,10 @@ jobs:
           # Fork-only commits = commits on origin/main not in upstream/main.
           # By design these should be limited to .github/workflows/ adds.
           mkdir -p /tmp/fork-only
-          git log --reverse --format='%H' upstream/main..origin/main > /tmp/fork-only/shas.txt
+          # --no-merges: replay only the actual change commits. PR-merge commits
+          # carry no standalone diff and cannot be cherry-picked without -m; their
+          # content is already in the change commits they merged.
+          git log --reverse --no-merges --format='%H' upstream/main..origin/main > /tmp/fork-only/shas.txt
           echo "Fork-only commits:"
           cat /tmp/fork-only/shas.txt
           # Audit: every fork-only commit must touch only .github/ paths.
@@ -111,19 +120,47 @@ jobs:
           if [ ! -s /tmp/fork-only/shas.txt ]; then
             echo "No fork-only commits to replay (clean fast-forward)."
             echo "clean=true" >> "$GITHUB_OUTPUT"
-          else
-            set +e
-            git cherry-pick $(cat /tmp/fork-only/shas.txt | tr '\n' ' ')
-            cp_rc=$?
-            set -e
-            if [ "${cp_rc}" -ne 0 ]; then
-              echo "::error::Cherry-pick conflict; manual resolution required."
-              echo "clean=false" >> "$GITHUB_OUTPUT"
-              git cherry-pick --abort || true
-            else
-              echo "clean=true" >> "$GITHUB_OUTPUT"
-            fi
+            exit 0
           fi
+
+          # Replay fork-only commits one at a time. By design (and per the audit
+          # in the previous step) these touch ONLY .github/ — the fork carries
+          # CI/workflow overrides on top of upstream, nothing else. When a fork
+          # workflow edit collides with an upstream edit to the same file, the
+          # fork's version is authoritative (overriding upstream CI is the whole
+          # reason the edit exists), so we auto-resolve such conflicts in the
+          # fork's favor. This is what makes the weekly sync survive upstream
+          # churn in files like golang-test-linux.yml.
+          #
+          # Safety valve: if a conflict ever touches a NON-.github path, a code
+          # delta has leaked onto fork main (it should live as a patch in
+          # dlf-dds/DesertBreadBird/ops/netbird/patches/ instead). We refuse to
+          # auto-resolve that — abort and fall through to the issue-opening step.
+          clean=true
+          while read -r sha; do
+            [ -z "$sha" ] && continue
+            if git cherry-pick "$sha"; then
+              continue
+            fi
+            nonworkflow="$(git diff --name-only --diff-filter=U | grep -v '^.github/' || true)"
+            if [ -n "$nonworkflow" ]; then
+              echo "::error::Cherry-pick of ${sha} conflicts outside .github/:"
+              printf '%s\n' "$nonworkflow"
+              echo "::error::Refusing to auto-resolve a non-workflow conflict; manual resolution required."
+              git cherry-pick --abort || true
+              clean=false
+              break
+            fi
+            # All conflicts are in .github/ — take the fork's version (the commit
+            # being applied = --theirs during cherry-pick) and continue.
+            for f in $(git diff --name-only --diff-filter=U); do
+              git checkout --theirs -- "$f"
+              git add -- "$f"
+            done
+            GIT_EDITOR=true git cherry-pick --continue
+            echo "Auto-resolved .github/ conflict in ${sha} (fork override wins)."
+          done < /tmp/fork-only/shas.txt
+          echo "clean=${clean}" >> "$GITHUB_OUTPUT"
 
       - name: Push sync branch + open PR
         if: steps.fetch.outputs.no_drift == 'false' && steps.cherry.outputs.clean == 'true'
