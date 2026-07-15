@@ -1326,6 +1326,17 @@ func (e *Engine) updateNetworkMap(networkMap *mgmProto.NetworkMap) error {
 
 		e.statusRecorder.FinishPeerListModifications()
 
+		// ADR 1081 L1: peers listed in the network map are reported online by
+		// management (offline peers arrive on a separate list). That is the
+		// positive signal to half-open any offer circuit breaker that had
+		// opened while the peer was unreachable, so re-dial is event-driven
+		// rather than a poll into the void.
+		for _, p := range remotePeers {
+			if c, ok := e.peerStore.PeerConn(p.GetWgPubKey()); ok {
+				c.OnPeerReportedOnline()
+			}
+		}
+
 		e.updatePeerSSHHostKeys(remotePeers)
 
 		if err := e.updateSSHClientConfig(remotePeers); err != nil {

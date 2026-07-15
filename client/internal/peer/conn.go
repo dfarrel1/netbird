@@ -127,6 +127,9 @@ type Conn struct {
 	guard *guard.Guard
 	wg    sync.WaitGroup
 
+	// breaker suppresses blind offer retries to an unreachable peer. ADR 1081 L1.
+	breaker *pairBreaker
+
 	// debug purpose
 	dumpState *stateDump
 
@@ -162,6 +165,7 @@ func NewConn(config ConnConfig, services ServiceDependencies) (*Conn, error) {
 		endpointUpdater:    NewEndpointUpdater(connLog, config.WgConfig, isController(config)),
 		wgWatcher:          NewWGWatcher(connLog, config.WgConfig.WgInterface, config.Key, dumpState),
 		metricsRecorder:    services.MetricsRecorder,
+		breaker:            newPairBreaker(),
 	}
 
 	return conn, nil
@@ -605,10 +609,27 @@ func (conn *Conn) handleRelayDisconnectedLocked() {
 }
 
 func (conn *Conn) onGuardEvent() {
+	// ADR 1081 L1: skip blind retries to an unreachable peer. The breaker
+	// re-opens the door on a mgmt online report (OnPeerReportedOnline) or the
+	// fallback probe window, so this suppresses signal load without stranding
+	// a peer that comes back.
+	if !conn.breaker.Allow() {
+		conn.Log.Debugf("offer send suppressed by circuit breaker; awaiting peer-online report or probe window")
+		return
+	}
 	conn.dumpState.SendOffer()
-	if err := conn.handshaker.SendOffer(); err != nil {
+	err := conn.handshaker.SendOffer()
+	conn.breaker.OnResult(err == nil)
+	if err != nil {
 		conn.Log.Errorf("failed to send offer: %v", err)
 	}
+}
+
+// OnPeerReportedOnline half-opens the offer circuit breaker when management
+// reports this peer online, letting the next guard tick probe immediately.
+// ADR 1081 L1.
+func (conn *Conn) OnPeerReportedOnline() {
+	conn.breaker.OnPeerReportedOnline()
 }
 
 func (conn *Conn) onWGDisconnected() {
