@@ -6,6 +6,19 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	log "github.com/sirupsen/logrus"
+
+	nbbackoff "github.com/netbirdio/netbird/shared/backoff"
+)
+
+// goat ADR 1081 (control-plane storm resilience) Layer 1: full-jitter backoff
+// on signal offer retries. The 2026-07-15 EFDI collapse was ~90 peers retrying
+// offers at a fixed cadence into a degraded uplink; full jitter across a
+// growing interval keeps a fleet that lost its streams together from
+// re-storming together. Base is snappy for the common single-peer flap; the
+// cap bounds the worst case.
+const (
+	offerRetryBackoffBase = 1 * time.Second
+	offerRetryBackoffCap  = 60 * time.Second
 )
 
 // ConnStatus represents the connection state as seen by the guard.
@@ -51,7 +64,7 @@ func NewGuard(log *log.Entry, isConnectedFn connStatusFunc, timeout time.Duratio
 }
 
 func (g *Guard) Start(ctx context.Context, eventCallback func()) {
-	g.log.Infof("starting guard for reconnection with MaxInterval: %s", g.timeout)
+	g.log.Infof("starting guard for reconnection with full-jitter offer retry (base %s, cap %s)", offerRetryBackoffBase, offerRetryBackoffCap)
 	g.reconnectLoopWithRetry(ctx, eventCallback)
 }
 
@@ -140,26 +153,18 @@ func (g *Guard) reconnectLoopWithRetry(ctx context.Context, callback func()) {
 
 // initialTicker give chance to the peer to establish the initial connection.
 func (g *Guard) initialTicker(ctx context.Context) *backoff.Ticker {
-	bo := backoff.WithContext(&backoff.ExponentialBackOff{
-		InitialInterval:     3 * time.Second,
-		RandomizationFactor: 0.1,
-		Multiplier:          2,
-		MaxInterval:         g.timeout,
-		Stop:                backoff.Stop,
-		Clock:               backoff.SystemClock,
+	bo := backoff.WithContext(&nbbackoff.FullJitter{
+		Base: offerRetryBackoffBase,
+		Cap:  offerRetryBackoffCap,
 	}, ctx)
 
 	return backoff.NewTicker(bo)
 }
 
 func (g *Guard) newReconnectTicker(ctx context.Context) *backoff.Ticker {
-	bo := backoff.WithContext(&backoff.ExponentialBackOff{
-		InitialInterval:     800 * time.Millisecond,
-		RandomizationFactor: 0.1,
-		Multiplier:          2,
-		MaxInterval:         g.timeout,
-		Stop:                backoff.Stop,
-		Clock:               backoff.SystemClock,
+	bo := backoff.WithContext(&nbbackoff.FullJitter{
+		Base: offerRetryBackoffBase,
+		Cap:  offerRetryBackoffCap,
 	}, ctx)
 
 	ticker := backoff.NewTicker(bo)

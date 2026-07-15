@@ -18,12 +18,25 @@ import (
 
 	nbgrpc "github.com/netbirdio/netbird/client/grpc"
 	"github.com/netbirdio/netbird/encryption"
+	nbbackoff "github.com/netbirdio/netbird/shared/backoff"
 	"github.com/netbirdio/netbird/shared/management/client"
 	"github.com/netbirdio/netbird/shared/signal/proto"
 	"github.com/netbirdio/netbird/util/wsproxy"
 )
 
 const healthCheckTimeout = 5 * time.Second
+
+// goat ADR 1081 (control-plane storm resilience) Layer 1: full-jitter backoff
+// on signal stream re-registration. Re-registration is heavier than an offer
+// (TLS + gRPC stream setup) and was a major byte source in the 2026-07-15 EFDI
+// storm — ~90 peers re-registering on a ≤10 s cadence kept the uplink
+// saturated. A 2 s→120 s full-jitter interval spreads the herd; MaxElapsed
+// preserves upstream's multi-month "retry then give up" bound.
+const (
+	reRegisterBackoffBase       = 2 * time.Second
+	reRegisterBackoffCap        = 120 * time.Second
+	reRegisterBackoffMaxElapsed = 3 * 30 * 24 * time.Hour // 3 months, matches upstream
+)
 
 // ConnStateNotifier is a wrapper interface of the status recorder
 type ConnStateNotifier interface {
@@ -112,16 +125,13 @@ func (c *GrpcClient) SetConnStateListener(notifier ConnStateNotifier) {
 	c.connStateCallback = notifier
 }
 
-// defaultBackoff is a basic backoff mechanism for general issues
+// defaultBackoff is a basic backoff mechanism for general issues.
+// goat ADR 1081 L1: full-jitter re-registration backoff (see const block).
 func defaultBackoff(ctx context.Context) backoff.BackOff {
-	return backoff.WithContext(&backoff.ExponentialBackOff{
-		InitialInterval:     800 * time.Millisecond,
-		RandomizationFactor: 1,
-		Multiplier:          1.7,
-		MaxInterval:         10 * time.Second,
-		MaxElapsedTime:      3 * 30 * 24 * time.Hour, // 3 months
-		Stop:                backoff.Stop,
-		Clock:               backoff.SystemClock,
+	return backoff.WithContext(&nbbackoff.FullJitter{
+		Base:       reRegisterBackoffBase,
+		Cap:        reRegisterBackoffCap,
+		MaxElapsed: reRegisterBackoffMaxElapsed,
 	}, ctx)
 }
 
