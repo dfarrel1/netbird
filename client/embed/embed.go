@@ -81,6 +81,14 @@ type Options struct {
 	DisableClientRoutes bool
 	// BlockInbound blocks all inbound connections from peers
 	BlockInbound bool
+	// RosenpassEnabled turns on the Rosenpass hybrid post-quantum key
+	// exchange, injecting a rotating PQ-derived pre-shared key per peer
+	// (embed parity with the `--enable-rosenpass` CLI flag).
+	RosenpassEnabled bool
+	// RosenpassPermissive lets a Rosenpass-enabled peer still accept plain
+	// WireGuard from peers without Rosenpass (mixed-fleet rollout). Only
+	// meaningful when RosenpassEnabled is true.
+	RosenpassPermissive bool
 	// WireguardPort is the port for the WireGuard interface. Use 0 for a random port.
 	WireguardPort *int
 	// MTU is the MTU for the WireGuard interface.
@@ -171,6 +179,8 @@ func New(opts Options) (*Client, error) {
 		DisableServerRoutes: &t,
 		DisableClientRoutes: &opts.DisableClientRoutes,
 		BlockInbound:        &opts.BlockInbound,
+		RosenpassEnabled:    &opts.RosenpassEnabled,
+		RosenpassPermissive: &opts.RosenpassPermissive,
 		WireguardPort:       opts.WireguardPort,
 		MTU:                 opts.MTU,
 		DNSLabels:           parsedLabels,
