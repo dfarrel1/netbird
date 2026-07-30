@@ -74,6 +74,9 @@ func (a *TokenStore) TokenBinary() []byte {
 // payload) is never "expired" — refusal is only for tokens that
 // provably cannot authenticate.
 func (a *TokenStore) TokenExpired(now time.Time) bool {
+	if a == nil {
+		return false
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return !a.expiresAt.IsZero() && now.After(a.expiresAt)
@@ -91,6 +94,9 @@ func (a *TokenStore) SetOnExpiredUse(f func()) {
 // expiredUseNotifyInterval. Safe to call from any goroutine; the
 // callback runs without the store lock held.
 func (a *TokenStore) NotifyExpiredUse(now time.Time) {
+	if a == nil {
+		return
+	}
 	a.mu.Lock()
 	f := a.onExpiredUse
 	if f == nil || now.Sub(a.lastExpiredUse) < expiredUseNotifyInterval {
