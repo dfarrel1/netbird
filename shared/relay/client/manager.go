@@ -236,6 +236,17 @@ func (m *Manager) UpdateToken(token *relayAuth.Token) error {
 	return m.tokenStore.UpdateToken(token)
 }
 
+// SetOnTokenExpiredListener registers the escalation callback fired
+// (rate-limited by the token store) when a relay connect was refused
+// because the locally held auth token is past its own expiry (F-269).
+// A token only ages out when the management sync that refreshes it has
+// been silently dead longer than the TTL, so retrying the relay can
+// never heal it — the listener should force a full client restart
+// (fresh management login → fresh token).
+func (m *Manager) SetOnTokenExpiredListener(f func()) {
+	m.tokenStore.SetOnExpiredUse(f)
+}
+
 func (m *Manager) openConnVia(ctx context.Context, serverAddress, peerKey string) (net.Conn, error) {
 	// check if already has a connection to the desired relay server
 	m.relayClientsMutex.RLock()

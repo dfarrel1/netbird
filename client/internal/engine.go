@@ -436,6 +436,19 @@ func (e *Engine) Start(netbirdConfig *mgmProto.NetbirdConfig, mgmtURL *url.URL) 
 	e.ctx, e.cancel = context.WithCancel(e.clientCtx)
 	e.exposeManager = expose.NewManager(e.ctx, e.mgmClient)
 
+	// F-269 self-heal: a relay connect refused on a locally-expired auth
+	// token means the management sync that refreshes tokens (at 3/4 TTL)
+	// has been silently dead for longer than the TTL. Retrying the relay
+	// with that token can never succeed — the only healing path is a
+	// full client restart, whose fresh management login mints a fresh
+	// token. The token store rate-limits this escalation.
+	if e.relayManager != nil {
+		e.relayManager.SetOnTokenExpiredListener(func() {
+			log.Warn("relay auth token expired locally (management sync stale) — restarting client for a fresh login (F-269)")
+			e.triggerClientRestart()
+		})
+	}
+
 	wgIface, err := e.newWgIface()
 	if err != nil {
 		log.Errorf("failed creating wireguard interface instance %s: [%s]", e.config.WgIfaceName, err)

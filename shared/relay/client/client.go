@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -329,7 +330,22 @@ func (c *Client) Close() error {
 	return c.close(true)
 }
 
+// ErrRelayTokenExpired reports a connect refused because the locally
+// held relay auth token is past its own expiry (F-269). The relay
+// would reject it ("expired auth token") and, because the goat relay
+// drops the connection on auth failure without a response, the failure
+// would otherwise be indistinguishable from a network fault — which is
+// how a peer retried a dead token for a day while every surface stayed
+// green. Only a fresh management login mints a new token; the
+// TokenStore's expired-use notification escalates to exactly that.
+var ErrRelayTokenExpired = errors.New("relay auth token expired locally — management has not refreshed it; full re-login required")
+
 func (c *Client) connect(ctx context.Context) (*RelayAddr, error) {
+	if c.authTokenStore.TokenExpired(time.Now()) {
+		c.log.Errorf("refusing relay handshake: %s", ErrRelayTokenExpired)
+		c.authTokenStore.NotifyExpiredUse(time.Now())
+		return nil, ErrRelayTokenExpired
+	}
 	dialers := c.getDialers()
 
 	rd := dialer.NewRaceDial(c.log, dialer.DefaultConnectionTimeout, c.connectionURL, dialers...)
