@@ -449,7 +449,13 @@ func (s *Server) Login(callerCtx context.Context, msg *proto.LoginRequest) (*pro
 			username = *msg.Username
 		}
 
-		if *msg.ProfileName != activeProf.Name && username != activeProf.Username {
+		// A profile differing in EITHER name or username must switch —
+	// matching switchProfileIfNeeded. The old `&&` skipped the switch
+	// for the common case (same OS user, different profile name), so
+	// Login proceeded against the STALE active profile's config (wrong
+	// management URL) while the CLI believed the requested profile was
+	// active — the daemon-vs-CLI active_profile drift of F-269.
+	if *msg.ProfileName != activeProf.Name || username != activeProf.Username {
 			if s.checkProfilesDisabled() {
 				log.Errorf("profiles are disabled, you cannot use this feature without profiles enabled")
 				return nil, gstatus.Errorf(codes.Unavailable, errProfilesDisabled)
