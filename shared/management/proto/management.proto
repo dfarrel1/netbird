@@ -277,6 +277,11 @@ message RelayConfig {
   repeated string urls = 1;
   string tokenPayload = 2;
   string tokenSignature = 3;
+  // tokenAuthAlgo selects the relay auth token format the client must
+  // emit (goat ADR 1021). 0/unset and 1 = HMAC-SHA256 (unbound, legacy);
+  // 2 = HMAC-SHA256 peer-ID-bound. Unset by old servers → client defaults
+  // to unbound, preserving backward compatibility.
+  uint32 tokenAuthAlgo = 4;
 }
 
 message FlowConfig {

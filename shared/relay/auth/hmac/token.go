@@ -16,6 +16,11 @@ import (
 type Token struct {
 	Payload   string
 	Signature string
+	// AuthAlgo is the relay auth token algorithm the server selected
+	// (goat ADR 1021): 0/unset = unbound HMAC-SHA256 (legacy), 2 =
+	// peer-ID-bound. Carried from the management RelayConfig so the client
+	// reconstructs the wire token with the correct algorithm byte.
+	AuthAlgo uint32
 }
 
 func unmarshalToken(payload []byte) (Token, error) {
