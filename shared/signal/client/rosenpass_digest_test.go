@@ -10,11 +10,11 @@ import (
 	sigproto "github.com/netbirdio/netbird/shared/signal/proto"
 )
 
-// ADR 1134 D2/D3 — send the digest, resolve the key once.
+// Send the Rosenpass key as a digest; resolve it once per peer-pair.
 //
 // These tests assert the WIRE SIZE, because the wire size is the entire point.
-// F-338: a 524,160-byte Classic McEliece static public key in every OFFER and
-// ANSWER was 99.3% of signal bytes on a live deployment.
+// A 524,160-byte Classic McEliece static public key in every OFFER and ANSWER
+// was 99.3% of signal bytes on a live deployment.
 
 func spk(t *testing.T) []byte {
 	t.Helper()
@@ -101,7 +101,7 @@ func TestDigestModeCutsTheOfferBy99Percent(t *testing.T) {
 	reduction := 1 - float64(digest)/float64(legacy)
 	t.Logf("offer body: %d bytes -> %d bytes (%.2f%% reduction)", legacy, digest, reduction*100)
 
-	// Measured live on EFDI: 2.93 large offers/sec.
+	// Observed on a live deployment: 2.93 large offers/sec.
 	const offersPerSec = 2.93
 	t.Logf("at the live 2.93 offers/sec: %.2f Mbit/s -> %.4f Mbit/s",
 		float64(legacy)*8*offersPerSec/1e6, float64(digest)*8*offersPerSec/1e6)

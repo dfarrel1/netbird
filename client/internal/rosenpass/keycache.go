@@ -11,7 +11,7 @@ const DigestSize = blake2s.Size // 32
 
 // KeyCache maps a Rosenpass static-public-key digest to the full key.
 //
-// WHY THIS EXISTS (F-338). A Rosenpass v1 static public key is Classic McEliece
+// WHY THIS EXISTS. A Rosenpass v1 static public key is Classic McEliece
 // 460896: 524,160 bytes. NetBird historically placed that whole key in every
 // signal OFFER and ANSWER, so a routine peer handshake cost half a megabyte and
 // repeated for as long as the far peer stayed unreachable. On a live deployment
