@@ -237,3 +237,39 @@ func TestF338_BothLeversMultiply(t *testing.T) {
 	}
 	_ = time.Second
 }
+
+// TestF338_AB_RosenpassOffVsOn is the control the operator asked for: stop
+// inferring that Rosenpass is the cause and just turn it off.
+//
+// getRosenpassPubKey() returns nil when rpManager is nil (engine.go:1914-1919),
+// which is exactly what a client with rosenpass disabled sends. This is the
+// same marshalling path, same fields, one variable changed.
+func TestF338_AB_RosenpassOffVsOn(t *testing.T) {
+	spk, _, err := rp.GenerateKeyPair()
+	if err != nil {
+		t.Fatalf("rosenpass keygen: %v", err)
+	}
+
+	on := buildOffer(t, spk)  // rosenpass_enabled: true  (EFDI, efdi-prod)
+	off := buildOffer(t, nil) // rosenpass_enabled: false (jailbreak default)
+
+	t.Logf("rosenpass ON : offer body = %d bytes", len(on))
+	t.Logf("rosenpass OFF: offer body = %d bytes", len(off))
+	t.Logf("attributable to Rosenpass: %d bytes (%.2f%%)",
+		len(on)-len(off), 100*float64(len(on)-len(off))/float64(len(on)))
+
+	// At the live EFDI offer rate.
+	const offersPerSec = 2.93
+	t.Logf("at %.2f offers/sec: %.2f Mbit/s ON vs %.4f Mbit/s OFF",
+		offersPerSec,
+		float64(len(on))*8*offersPerSec/1e6,
+		float64(len(off))*8*offersPerSec/1e6)
+
+	if len(off) > 1000 {
+		t.Fatalf("expected a sub-1KB offer with rosenpass off, got %d", len(off))
+	}
+	if len(on)-len(off) < 500_000 {
+		t.Fatalf("expected Rosenpass to account for >500 KB of the offer, got %d",
+			len(on)-len(off))
+	}
+}
