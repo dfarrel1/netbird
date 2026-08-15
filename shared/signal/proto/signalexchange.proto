@@ -51,11 +51,16 @@ message Body {
     // ROSENPASS_KEY_REQUEST asks a peer for the full Rosenpass static public
     // key matching a digest we received but do not hold. Sent only when the
     // remote advertised ROSENPASS_KEY_BY_DIGEST. See F-338.
-    ROSENPASS_KEY_REQUEST = 6;
+    // 6 is RESERVED for upstream's HEARTBEAT. Our lineage does not carry it,
+    // so 6 looked free here — but taking it would mean a heartbeat from an
+    // upstream peer parses as a key request the moment the two lineages meet.
+    // Enum numbers are wire identity, not local bookkeeping.
+    reserved 6;
+    ROSENPASS_KEY_REQUEST = 7;
     // ROSENPASS_KEY carries the full key in reply to a ROSENPASS_KEY_REQUEST.
     // This is the ONLY message type that may carry the 512 KiB key once both
     // peers support digest mode.
-    ROSENPASS_KEY = 7;
+    ROSENPASS_KEY = 8;
   }
   Type type = 1;
   string payload = 2;
