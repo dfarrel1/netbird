@@ -170,6 +170,12 @@ type Engine struct {
 
 	// rpManager is a Rosenpass manager
 	rpManager *rosenpass.Manager
+	// rpKeyCache resolves a Rosenpass static-public-key digest to the full key
+	// (ADR 1134 D2, F-338). peerFeatures records what each peer advertised, which
+	// is how we know whether it can accept a digest at all. Both are guarded by
+	// syncMsgMux.
+	rpKeyCache   *rosenpass.KeyCache
+	peerFeatures map[string][]uint32
 
 	// syncMsgMux is used to guarantee sequential Management Service message processing
 	syncMsgMux *sync.Mutex
@@ -423,6 +429,17 @@ func waitWithContext(ctx context.Context, wg *sync.WaitGroup) error {
 // Connections to remote peers are not established here.
 // However, they will be established once an event with a list of peers to connect to will be received from Management Service
 func (e *Engine) Start(netbirdConfig *mgmProto.NetbirdConfig, mgmtURL *url.URL) error {
+	// ADR 1134 D2/D3 — resolve Rosenpass keys by digest. Installed here rather
+	// than at construction so the lookup closes over a fully-built engine.
+	e.ensureRosenpassKeyCache()
+	if e.signaler != nil {
+		e.signaler.SetPeerFeatureLookup(func(remoteKey string) bool {
+			e.syncMsgMux.Lock()
+			defer e.syncMsgMux.Unlock()
+			return e.peerSupportsDigest(remoteKey)
+		})
+	}
+
 	e.syncMsgMux.Lock()
 	defer e.syncMsgMux.Unlock()
 
@@ -1620,8 +1637,25 @@ func (e *Engine) receiveSignalEvents() {
 				e.connMgr.ActivatePeer(e.ctx, conn)
 			}
 
+			// Features ride on every message, and the cheapest ones arrive most
+			// often, so learn from all of them (ADR 1134 D3).
+			e.rememberPeerFeatures(msg.Key, msg.GetBody().GetFeaturesSupported())
+
 			switch msg.GetBody().Type {
+			case sProto.Body_ROSENPASS_KEY_REQUEST:
+				e.replyWithRosenpassKey(msg.Key)
+				return nil
+			case sProto.Body_ROSENPASS_KEY:
+				e.acceptRosenpassKey(msg)
+				return nil
 			case sProto.Body_OFFER, sProto.Body_ANSWER:
+				// The peer may have sent a 32-byte digest instead of the 512 KB
+				// key. Resolve it before anything reads RosenpassPubKey; on a
+				// miss we ask for the key and drop THIS offer, because the
+				// sender retries on its own cadence.
+				if !e.resolveRosenpassKey(msg) {
+					return nil
+				}
 				offerAnswer, err := convertToOfferAnswer(msg)
 				if err != nil {
 					return err

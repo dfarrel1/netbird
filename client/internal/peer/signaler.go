@@ -12,6 +12,10 @@ import (
 type Signaler struct {
 	signal       signal.Client
 	wgPrivateKey wgtypes.Key
+	// peerSupportsDigest reports whether a peer advertised
+	// RosenpassKeyByDigest. nil means "assume not", which yields the historical
+	// full-key offer (ADR 1134 D3).
+	peerSupportsDigest func(remoteKey string) bool
 }
 
 func NewSignaler(signal signal.Client, wgPrivateKey wgtypes.Key) *Signaler {
@@ -19,6 +23,25 @@ func NewSignaler(signal signal.Client, wgPrivateKey wgtypes.Key) *Signaler {
 		signal:       signal,
 		wgPrivateKey: wgPrivateKey,
 	}
+}
+
+// SetPeerFeatureLookup installs the callback that reports what a given peer has
+// advertised in Body.featuresSupported.
+//
+// ADR 1134 D3. When it says a peer understands RosenpassKeyByDigest we send a
+// 32-byte digest instead of the 524,160-byte Classic McEliece static public key
+// (F-338). A nil lookup, or one that returns false, produces the historical
+// full-key offer — so an older peer, and a goatnet that has not adopted this,
+// are both unaffected.
+func (s *Signaler) SetPeerFeatureLookup(f func(remoteKey string) bool) {
+	s.peerSupportsDigest = f
+}
+
+func (s *Signaler) remoteFeatures(remoteKey string) []uint32 {
+	if s.peerSupportsDigest != nil && s.peerSupportsDigest(remoteKey) {
+		return []uint32{signal.RosenpassKeyByDigest}
+	}
+	return nil
 }
 
 func (s *Signaler) SignalOffer(offer OfferAnswer, remoteKey string) error {
@@ -54,7 +77,7 @@ func (s *Signaler) signalOfferAnswer(offerAnswer OfferAnswer, remoteKey string, 
 			log.Warnf("failed to get session ID bytes: %v", err)
 		}
 	}
-	msg, err := signal.MarshalCredential(
+	msg, err := signal.MarshalCredentialFor(
 		s.wgPrivateKey,
 		offerAnswer.WgListenPort,
 		remoteKey,
@@ -66,7 +89,8 @@ func (s *Signaler) signalOfferAnswer(offerAnswer OfferAnswer, remoteKey string, 
 		offerAnswer.RosenpassPubKey,
 		offerAnswer.RosenpassAddr,
 		offerAnswer.RelaySrvAddress,
-		sessionIDBytes)
+		sessionIDBytes,
+		s.remoteFeatures(remoteKey))
 	if err != nil {
 		return err
 	}
