@@ -1,9 +1,9 @@
 package client
 
 import (
-	"golang.org/x/crypto/blake2s"
 	"context"
 	"fmt"
+	"golang.org/x/crypto/blake2s"
 	"io"
 	"net/netip"
 	"strings"
